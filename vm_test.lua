@@ -44,7 +44,7 @@ end
 function test_register()
   local co = VM.spawn(function() VM.receive() end)
   VM.register("routine",co)
-  luaunit.assertEquals(VM.registered(),{["routine"]=co})
+  luaunit.assertEquals(VM.registered(),{"routine"})
   VM.resume(co)
   luaunit.assertEquals(VM.registered(),{})
   luaunit.assertErrorMsgContains("badarg",VM.register,"routine",co)

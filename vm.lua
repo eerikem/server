@@ -3,7 +3,6 @@ local VM = {}
 local index = 1
 local running = 0
 VM.coroutines = {}
-VM.name2co = {}
 VM.co2names = {}
 
 --TODO spawn_link
@@ -20,13 +19,13 @@ end
 
 local function unregisterNames(co)
   for _,name in pairs(VM.co2names[co]) do
-    VM.name2co[name] = nil
+    VM.coroutines[name] = nil
   end
   VM.co2names[co]=nil
 end
 
 local function registerName(name,co)
-  VM.name2co[name]=co
+  VM.coroutines[name]=VM.coroutines[co]
   if not VM.co2names[co] then
     VM.co2names[co]={}
   end
@@ -34,11 +33,11 @@ local function registerName(name,co)
 end
 
 function VM.unregister(name)
-  if not VM.name2co[name] then
+  if not VM.coroutines[name] then
     error("badarg: "..name.." not a registered coroutine",2)
   end
-  local co = VM.name2co[name]
-  VM.name2co[name]=nil
+  local co = VM.coroutines[name]
+  VM.coroutines[name]=nil
   for x,_name in pairs(VM.co2names[co]) do
     if _name == name then
       table.remove(VM.co2names[co],x)
@@ -79,8 +78,8 @@ end
 
 function VM.send(co,...)
   if type(co) == "string" then
-    if VM.name2co[co] then co = VM.name2co[co]
-    else error("badarg: "..co.." not a registered coroutine")
+    if not VM.coroutines[co] then
+      error("badarg: "..co.." not a registered coroutine")
     end
   elseif not (type(co) == "number") then error("badarg: "..co,2) end
   if VM.coroutines[co] then
@@ -101,7 +100,7 @@ function VM.receive()
 end
 
 function VM.register(name,co)
-  if VM.name2co[name] then
+  if VM.coroutines[name] then
     error("badarg: "..name.." already registered",2)
   elseif VM.status(co) == "dead" then
     error("badarg: Cannot register dead coroutine "..co,2)
@@ -113,7 +112,11 @@ function VM.register(name,co)
 end
 
 function VM.registered()
-  return VM.name2co
+  local names = {}
+  for key,_ in pairs(VM.coroutines) do
+    if type(key)=="string" then table.insert(names,key) end
+  end
+  return names
 end
 
 return VM  
