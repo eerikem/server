@@ -1,15 +1,20 @@
 local VM = {}
 
 local index = 1
-local running = 0
+local RUNNING = 0
 VM.coroutines = {}
 VM.co2names = {}
 
+--TODO link
 --TODO spawn_link
 VM.coroutines[1]=coroutine.running()
 
 function VM.self()
   return 1
+end
+
+function VM.running()
+  return RUNNING
 end
 
 function VM.status(co)
@@ -68,9 +73,13 @@ end
 
 --TODO change to private function?
 function VM.resume(co,...)
-  running = co
+  RUNNING = co
   local thread = VM.coroutines[co]
-  coroutine.resume(thread,unpack(arg))
+  local ok, msg = coroutine.resume(thread,unpack(arg))
+  if not ok then
+    print("ERROR: "..msg)
+    --io.stdin:read'*l'
+    end
   if coroutine.status(thread)=="dead" then
     removeCo(co)
   end
@@ -88,7 +97,7 @@ function VM.send(co,...)
 end
 
 function VM.receive()
-  local co = running
+  local co = RUNNING
   local function terminate(event,...)
     if event == "terminate" then
       kill(co)
@@ -117,6 +126,10 @@ function VM.registered()
     if type(key)=="string" then table.insert(names,key) end
   end
   return names
+end
+
+function VM.link(co)
+
 end
 
 return VM  

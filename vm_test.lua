@@ -61,4 +61,30 @@ function test_registered_co()
   luaunit.assertEquals(msg,"msg")
 end
 
+function test_unlinked()
+  local function sup()
+    VM.spawn(function() error("error") end)
+  end
+  VM.spawn(sup)
+end
+
+--
+function test_link()
+  local error, msg
+  local unreachable = true
+  local child = function() 
+      error, msg = coroutine.yeild()
+      unreachable = false
+  end
+  local function sup()
+    local co = VM.spawn(child)
+    VM.link(co)
+    error("Some error")
+  end
+  VM.spawn(sup)
+  luaunit.assertEquals(error,"error")
+  luaunit.assertStrIContains(msg,"Some error")
+  luaunit.assertTrue(unreachable)
+end
+
 os.exit(luaunit.LuaUnit.run())
