@@ -2,6 +2,8 @@ local VM = require 'vm'
 
 luaunit = require 'luaunit'
 
+--TODO setup and teardown of the VM?
+
 function test_spawn()
   local co = VM.spawn(function() coroutine.yield() end)
   luaunit.assert_equals(VM.status(co),"suspended")
@@ -98,10 +100,30 @@ function test_link()
     VM.link(co)
     error("Some error")
   end
-  VM.spawn(sup)
+  local co = VM.spawn(sup)
+  luaunit.assertError(VM.link,co)
   --luaunit.assertEquals(_error,"error")
   --luaunit.assertStrIContains(msg,"Some error")
   luaunit.assertTrue(unreachable)
+end
+
+function test_link2()
+  local linker = function()
+    local msg = VM.receive() 
+    while msg ~= "die" do
+      VM.link(msg)
+      msg = VM.receive() 
+    end
+    error(msg)
+  end
+  local co = VM.spawn(linker)
+  local co2 = VM.spawn(linker)
+  local co3 = VM.spawn(linker)
+  
+  VM.send(co,co2)
+  VM.send(co2,co3)
+  VM.send(co,"die")
+  luaunit.assertEquals(VM.coroutines,{})
 end
 
 os.exit(luaunit.LuaUnit.run())

@@ -6,7 +6,6 @@ VM.coroutines = {}
 VM.co2names = {}
 VM.links = {}
 
---TODO link
 --TODO spawn_link
 VM.coroutines[1]=coroutine.running()
 
@@ -72,17 +71,26 @@ local function registerLink(co)
 end
 
 local function unregisterLinks(co)
-   purgeItemsFromHashArray(VM.links,co,VM.links)
+  purgeItemsFromHashArray(VM.links,co,VM.links)
 end
 
-local function propogate(error)
+local function unregisterLink(co)
+  HashArrayRemoveValue(VM.links,RUNNING,co)
+  HashArrayRemoveValue(VM.links,co,RUNNING)
+end
+
+local function propogate(e)
   print("Propogating error")
   for _,co in ipairs(VM.links[RUNNING]) do
-    VM.send(co,"error",error)
+    unregisterLink(co)
+    VM.send(co,"error",e)
   end
 end
 
 function VM.link(co)
+  if not VM.coroutines[co] then
+    error("badarg: "..co.." is not a registered coroutine",2)
+  end
   registerLink(co)
 end
 
@@ -139,10 +147,6 @@ end
 --Coroutines--
 --------------
 
-local function receivedError(msg)
-  print("ERROR in Coroutine "..RUNNING..": "..msg)
-end
-
 local function removeCo(co)
   --for k,v in pairs(VM.coroutines) do print(k,v) end
   if VM.co2names[co] then
@@ -151,8 +155,16 @@ local function removeCo(co)
 end
 
 local function kill(co)
-  removeCo(co)  
+  removeCo(co)
   coroutine.yield()
+end
+
+local function receivedError(msg)
+  print("ERROR in Coroutine "..RUNNING..": "..msg)
+  if VM.links[RUNNING] then
+    propogate(msg)
+  end
+  kill(RUNNING)
 end
 
 --TODO queue resume till later?
@@ -173,11 +185,7 @@ function VM.resume(co,...)
   if not ok then
     receivedError(e)
     --io.stdin:read'*l'
-    if VM.links[RUNNING] then
-      propogate(e)
-    end
-  end
-  if coroutine.status(thread)=="dead" then
+  elseif coroutine.status(thread)=="dead" then
     removeCo(co)
   end
   RUNNING = parent
@@ -194,20 +202,20 @@ function VM.send(co,...)
   end
 end
 
-function VM.receive()
-  local co = RUNNING
-  local function terminate(event,...)
+local function postYield(co,event,...)
+  RUNNING = co
     if event == "terminate" then
-      kill(co)
-    elseif
-      event == "error" then
+      kill(RUNNING)
+    elseif event == "error" then
       receivedError(arg[1])
-      kill(co)
     else
       return event,unpack(arg)
     end
   end
-  return terminate(coroutine.yield())
+
+function VM.receive()
+  local co = RUNNING
+  return postYield(co,coroutine.yield())
 end
 
 ---------
