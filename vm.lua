@@ -5,13 +5,16 @@ local RUNNING = 0
 VM.coroutines = {}
 VM.co2names = {}
 VM.links = {}
+VM.dead = {}
+VM.log = function (msg) print(msg) end
 
 function VM.init()
   INDEX = 1
   RUNNING = 0
   VM.coroutines = {}
   VM.co2names = {}
-  VM.links = {} 
+  VM.links = {}
+  VM.dead = {} 
 end
 
 --TODO spawn_link
@@ -26,6 +29,7 @@ function VM.running()
 end
 
 function VM.status(co)
+  if VM.dead[co] then return "dead" end
   if not VM.coroutines[co] then error("badarg: Coroutine "..co.." does not exist",2) end
   return coroutine.status(VM.coroutines[co])
 end
@@ -88,7 +92,7 @@ local function unregisterLink(co)
 end
 
 local function propogate()
-  print("Propogating error")
+  VM.log("Propogating error")
   for _,co in ipairs(VM.links[RUNNING]) do
     unregisterLink(co)
     VM.send(co,"error")
@@ -156,9 +160,10 @@ end
 --------------
 
 local function removeCo(co)
-  --for k,v in pairs(VM.coroutines) do print(k,v) end
+  --for k,v in pairs(VM.coroutines) do VM.log(k,v) end
   if VM.co2names[co] then
     unregisterNames(co) end
+  VM.dead[co] = VM.coroutines[co]
   VM.coroutines[co]=nil
 end
 
@@ -167,7 +172,7 @@ local function kill(co)
 end
 
 local function receivedError()
-  print(RUNNING.." received error signal")
+  VM.log(RUNNING.." received error signal")
   if VM.links[RUNNING] then
     propogate(msg)
   end
@@ -176,7 +181,7 @@ local function receivedError()
 end
 
 local function catchError(msg)
-  print("ERROR in Coroutine "..RUNNING..": "..msg)
+  VM.log("ERROR in Coroutine "..RUNNING..": "..msg)
   if VM.links[RUNNING] then
     propogate()
   end
@@ -185,6 +190,7 @@ end
 
 --TODO queue resume till later?
 function VM.spawn(fun)
+  if not ("function" == type(fun)) then error("badarg: Not a function",2) end
   INDEX = INDEX + 1
   VM.coroutines[INDEX]=coroutine.create(fun)
   local co = INDEX
@@ -222,6 +228,7 @@ local function postYield(co,event,...)
   RUNNING = co
     if event == "terminate" then
       kill(RUNNING)
+      coroutine.yield()
     elseif event == "error" then
       receivedError(arg[1])
     else

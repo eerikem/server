@@ -16,7 +16,8 @@ end
 function test_resume()
   local co = VM.spawn(function() coroutine.yield() end)
   VM.resume(co)
-  luaunit.assertErrorMsgContains("does not exist",VM.status,co)
+  luaunit.assertEquals(VM.status(co),"dead")
+  --luaunit.assertErrorMsgContains("does not exist",VM.status,co)
 end
 
 function test_send()
@@ -42,8 +43,7 @@ end
 function test_terminate()
   local co = VM.spawn(function() VM.receive() end)
   VM.send(co,"terminate")
-  luaunit.assertError(VM.status,co)
-  --luaunit.assertError(VM.resume,co)
+  luaunit.assertError(VM.status,"dead")
 end
 
 function test_register()
