@@ -3,6 +3,9 @@ local VM = require 'vm'
 luaunit = require 'luaunit'
 
 --TODO setup and teardown of the VM?
+function setup_each()
+  VM.init()
+end
 
 function test_spawn()
   local co = VM.spawn(function() coroutine.yield() end)

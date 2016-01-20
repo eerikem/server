@@ -6,6 +6,14 @@ VM.coroutines = {}
 VM.co2names = {}
 VM.links = {}
 
+function VM.init()
+  INDEX = 1
+  RUNNING = 0
+  VM.coroutines = {}
+  VM.co2names = {}
+  VM.links = {} 
+end
+
 --TODO spawn_link
 VM.coroutines[1]=coroutine.running()
 
@@ -79,11 +87,11 @@ local function unregisterLink(co)
   HashArrayRemoveValue(VM.links,co,RUNNING)
 end
 
-local function propogate(e)
+local function propogate()
   print("Propogating error")
   for _,co in ipairs(VM.links[RUNNING]) do
     unregisterLink(co)
-    VM.send(co,"error",e)
+    VM.send(co,"error")
   end
 end
 
@@ -156,13 +164,21 @@ end
 
 local function kill(co)
   removeCo(co)
+end
+
+local function receivedError()
+  print(RUNNING.." received error signal")
+  if VM.links[RUNNING] then
+    propogate(msg)
+  end
+  kill(RUNNING)
   coroutine.yield()
 end
 
-local function receivedError(msg)
+local function catchError(msg)
   print("ERROR in Coroutine "..RUNNING..": "..msg)
   if VM.links[RUNNING] then
-    propogate(msg)
+    propogate()
   end
   kill(RUNNING)
 end
@@ -183,7 +199,7 @@ function VM.resume(co,...)
   local thread = VM.coroutines[co]
   local ok, e = coroutine.resume(thread,unpack(arg))
   if not ok then
-    receivedError(e)
+    catchError(e)
     --io.stdin:read'*l'
   elseif coroutine.status(thread)=="dead" then
     removeCo(co)
