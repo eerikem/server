@@ -4,6 +4,7 @@ local INDEX = 1
 local RUNNING = 0
 VM.coroutines = {}
 VM.co2names = {}
+VM.co2flags = {}
 VM.links = {}
 VM.dead = {}
 VM.log = function (msg) print(msg) end
@@ -13,6 +14,7 @@ function VM.init()
   RUNNING = 0
   VM.coroutines = {}
   VM.co2names = {}
+  VM.co2flags = {}
   VM.links = {}
   VM.dead = {} 
 end
@@ -51,6 +53,10 @@ local function HashArrayRemoveValue(list,index,item)
   for x,_item in pairs(list[index]) do
     if _item == item then
       table.remove(list[index],x)
+      print( table.getn(list[index]))
+      if table.getn(list[index]) == 0 then
+        list[index] = nil
+      end
       break
     end
   end
@@ -91,11 +97,10 @@ local function unregisterLink(co)
   HashArrayRemoveValue(VM.links,co,RUNNING)
 end
 
-local function propogate()
-  VM.log("Propogating error")
+local function propogate(signal,...)
   for _,co in ipairs(VM.links[RUNNING]) do
     unregisterLink(co)
-    VM.send(co,"error")
+    VM.send(co,signal,unpack(arg))
   end
 end
 
@@ -168,31 +173,48 @@ local function removeCo(co)
 end
 
 local function kill(co)
+  print("killing: "..co)
   removeCo(co)
 end
 
-local function receivedError()
-  VM.log(RUNNING.." received error signal")
+local function receivedExit(msg)
+  --VM.log('EXIT '..RUNNING.." "..msg )
   if VM.links[RUNNING] then
-    propogate(msg)
+    propogate('EXIT',msg)
   end
-  kill(RUNNING)
-  coroutine.yield()
+  if VM.co2flags[RUNNING].trap_exit then
+    print("trapped exit")
+    VM.log('EXIT '..RUNNING.." "..msg )
+    VM.receive()
+  else
+    kill(RUNNING)
+    coroutine.yield()
+  end
+end
+
+function VM.process_flag(signal,value)
+  VM.co2flags[RUNNING][signal]=value
 end
 
 local function catchError(msg)
-  VM.log("ERROR in Coroutine "..RUNNING..": "..msg)
-  if VM.links[RUNNING] then
-    propogate()
-  end
   kill(RUNNING)
+  if VM.links[RUNNING] then
+    propogate('EXIT',msg)
+  end
+--  if VM.co2flags[RUNNING].trap_exit then
+--    VM.log("ERROR in Coroutine "..RUNNING..": "..msg)
+--  else
+--    error(msg,4)
+--  end
 end
 
 --TODO queue resume till later?
+--TODO rehash coroutine lists into single object?
 function VM.spawn(fun)
   if not ("function" == type(fun)) then error("badarg: Not a function",2) end
   INDEX = INDEX + 1
   VM.coroutines[INDEX]=coroutine.create(fun)
+  VM.co2flags[INDEX]={}
   local co = INDEX
   VM.resume(INDEX)
   return co
@@ -229,8 +251,8 @@ local function postYield(co,event,...)
     if event == "terminate" then
       kill(RUNNING)
       coroutine.yield()
-    elseif event == "error" then
-      receivedError(arg[1])
+    elseif event == "EXIT" then
+      receivedExit(arg[1])
     else
       return event,unpack(arg)
     end
