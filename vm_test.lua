@@ -130,6 +130,16 @@ function test_link2()
   luaunit.assertEquals(VM.coroutines,{})
 end
 
+--TODO test a flagged routine that throws an error
+--should crash..?
+function test_link3()
+  local event
+  local co = VM.spawn(function()
+    event = VM.spawnlink(function()
+      VM.receive() VM.send(co,"msg") end) end)
+  local co2 = VM.spawn(function() VM.receive() end)
+end
+
 function test_trap_exit()
   local child
   local sup = function()

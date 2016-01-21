@@ -106,6 +106,7 @@ local function queueDeath(signal,...)
   die = {true,signal,arg[1]}
 end
 
+local function receivedExit(msg) end
 --TODO fix for loop
 local function propogate(signal,...)
 --  local links ={}
@@ -124,6 +125,9 @@ local function propogate(signal,...)
     unregisterLink(co)
     if co == 1 then
       queueDeath(signal,unpack(arg))
+    elseif VM.coroutines[co]==coroutine.running() then
+      RUNNING = co
+      receivedExit(arg[1])
     else
       VM.send(co,signal,unpack(arg))
     end
@@ -139,6 +143,7 @@ function VM.link(co)
   if not VM.coroutines[co] then
     error("badarg: "..co.." is not a registered coroutine",2)
   end
+  --VM.log("Linking "..RUNNING.." to "..co)
   registerLink(co)
 end
 
@@ -196,6 +201,7 @@ end
 --------------
 
 local function removeCo(co)
+  --VM.log("Removing "..co)
   --for k,v in pairs(VM.coroutines) do VM.log(k,v) end
   if VM.co2names[co] then
     unregisterNames(co) end
@@ -204,18 +210,17 @@ local function removeCo(co)
 end
 
 local function kill(co)
-  --print("killing: "..co)
   removeCo(co)
 end
 
-local function receivedExit(msg)
+receivedExit = function (msg)
   --VM.log('EXIT '..RUNNING.." "..msg )
   if VM.links[RUNNING] then
     propogate('EXIT',msg)
   end
   if VM.co2flags[RUNNING].trap_exit then
-    VM.log('EXIT '..RUNNING.." "..msg )
-    VM.receive()
+    return 'EXIT',msg
+    --VM.receive()
   else
     kill(RUNNING)
     coroutine.yield()
@@ -230,6 +235,7 @@ local function catchError(msg)
   VM.log("ERROR in Coroutine "..RUNNING..": "..msg)
   kill(RUNNING)
   if VM.links[RUNNING] then
+    --VM.log("killing connected to "..RUNNING)
     propogate('EXIT',msg)
   end
 --  if VM.co2flags[RUNNING].trap_exit then
@@ -241,15 +247,31 @@ end
 
 --TODO queue resume till later?
 --TODO rehash coroutine lists into single object?
-function VM.spawn(fun)
-  if not ("function" == type(fun)) then error("badarg: Not a function",2) end
+
+local function init(fun)
   INDEX = INDEX + 1
+  --VM.log("Spawning coroutine "..INDEX)
   VM.coroutines[INDEX]=coroutine.create(fun)
   VM.co2flags[INDEX]={}
   local co = INDEX
-  VM.resume(INDEX)
+  return INDEX
+end
+
+function VM.spawn(fun)
+  if not ("function" == type(fun)) then error("badarg: Not a function",2) end
+  local co = init(fun)
+  VM.resume(co)
   return co
 end
+
+function VM.spawnlink(fun)
+  if not ("function" == type(fun)) then error("badarg: Not a function",2) end
+  local co = init(fun)
+  VM.link(co)
+  VM.resume(co)
+  return co
+end
+
 
 --TODO change to private function?
 function VM.resume(co,...)
@@ -258,6 +280,7 @@ function VM.resume(co,...)
   local thread = VM.coroutines[co]
   local ok, e = coroutine.resume(thread,unpack(arg))
   if not ok then
+    VM.log(RUNNING.." died, returning to "..parent)
     catchError(e)
     --io.stdin:read'*l'
   elseif coroutine.status(thread)=="dead" then
@@ -278,13 +301,15 @@ function VM.send(co,...)
   end
 end
 
+
+
 local function postYield(co,event,...)
   RUNNING = co
     if event == "terminate" then
       kill(RUNNING)
       coroutine.yield()
     elseif event == "EXIT" then
-      receivedExit(arg[1])
+      return receivedExit(arg[1])
     else
       return event,unpack(arg)
     end
