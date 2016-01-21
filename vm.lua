@@ -1,22 +1,24 @@
 local VM = {}
 
 local INDEX = 1
-local RUNNING = 0
+local RUNNING = 1
 VM.coroutines = {}
 VM.co2names = {}
 VM.co2flags = {}
 VM.links = {}
 VM.dead = {}
 VM.log = function (msg) print(msg) end
+local die = {false,"event","reason"}
 
 function VM.init()
   INDEX = 1
-  RUNNING = 0
+  RUNNING = 1
   VM.coroutines = {}
   VM.co2names = {}
   VM.co2flags = {}
   VM.links = {}
   VM.dead = {} 
+  die = {false,"event","reason"}
 end
 
 --TODO spawn_link
@@ -53,7 +55,6 @@ local function HashArrayRemoveValue(list,index,item)
   for x,_item in pairs(list[index]) do
     if _item == item then
       table.remove(list[index],x)
-      print( table.getn(list[index]))
       if table.getn(list[index]) == 0 then
         list[index] = nil
       end
@@ -84,8 +85,11 @@ end
 ---------
 
 local function registerLink(co)
+  --VM.log("Add "..RUNNING.." to "..co)
   HashArrayInsert(VM.links,co,RUNNING)
+  --VM.log("Add "..co.." to "..RUNNING)
   HashArrayInsert(VM.links,RUNNING,co)
+  --VM.log("Checking: "..VM.links[RUNNING][1].." "..VM.links[co][1])
 end
 
 local function unregisterLinks(co)
@@ -93,15 +97,42 @@ local function unregisterLinks(co)
 end
 
 local function unregisterLink(co)
+  --VM.log("Unregistering "..RUNNING.." and "..co)
   HashArrayRemoveValue(VM.links,RUNNING,co)
   HashArrayRemoveValue(VM.links,co,RUNNING)
 end
 
+local function queueDeath(signal,...)
+  die = {true,signal,arg[1]}
+end
+
+--TODO fix for loop
 local function propogate(signal,...)
-  for _,co in ipairs(VM.links[RUNNING]) do
+--  local links ={}
+--  for _,co in ipairs(VM.links[RUNNING]) do
+--    table.insert(links,co)
+--  end
+--  for _,co in ipairs(links) do
+--    if VM.links[co] == RUNNING then
+--      unregisterLink(co)
+--      VM.send(co,signal,unpack(arg))
+--    end
+--  end
+  
+  while VM.links[RUNNING] do
+    local co = VM.links[RUNNING][1]
     unregisterLink(co)
-    VM.send(co,signal,unpack(arg))
-  end
+    if co == 1 then
+      queueDeath(signal,unpack(arg))
+    else
+      VM.send(co,signal,unpack(arg))
+    end
+  end    
+--  for _,co in ipairs(VM.links[RUNNING]) do
+--    unregisterLink(co)
+--    VM.send(co,signal,unpack(arg))
+--    
+--  end
 end
 
 function VM.link(co)
@@ -173,7 +204,7 @@ local function removeCo(co)
 end
 
 local function kill(co)
-  print("killing: "..co)
+  --print("killing: "..co)
   removeCo(co)
 end
 
@@ -183,7 +214,6 @@ local function receivedExit(msg)
     propogate('EXIT',msg)
   end
   if VM.co2flags[RUNNING].trap_exit then
-    print("trapped exit")
     VM.log('EXIT '..RUNNING.." "..msg )
     VM.receive()
   else
@@ -197,6 +227,7 @@ function VM.process_flag(signal,value)
 end
 
 local function catchError(msg)
+  VM.log("ERROR in Coroutine "..RUNNING..": "..msg)
   kill(RUNNING)
   if VM.links[RUNNING] then
     propogate('EXIT',msg)
@@ -233,6 +264,7 @@ function VM.resume(co,...)
     removeCo(co)
   end
   RUNNING = parent
+  if die[1] then error(die[2].." "..die[3],3) end
 end
 
 function VM.send(co,...)

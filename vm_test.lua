@@ -108,6 +108,7 @@ function test_link()
   --luaunit.assertEquals(_error,"error")
   --luaunit.assertStrIContains(msg,"Some error")
   luaunit.assertTrue(unreachable)
+  luaunit.assertEquals(VM.coroutines,{})
 end
 
 function test_link2()
@@ -140,7 +141,8 @@ function test_trap_exit()
     error("An error!")
   end
   local co = VM.spawn(sup)
-  VM.send(co,"amsg")
+  VM.link(co)
+  luaunit.assertError(VM.send,co,"amsg")
   luaunit.assertTrue(VM.coroutines[child])
   luaunit.assertTrue(VM.coroutines[co] == nil)
 end
