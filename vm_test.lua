@@ -171,4 +171,22 @@ function test_trap_exit()
   luaunit.assertTrue(VM.coroutines[co] == nil)
 end
 
+function test_kill()
+  local co = VM.spawn(function()
+    VM.process_flag("trap_exit",true)
+    while true do
+      VM.receive()
+    end
+  end)
+  VM.exit("normal",co)
+  luaunit.assertTrue(VM.coroutines[co])
+  VM.exit("a reason",co)
+  luaunit.assertTrue(VM.coroutines[co])
+  VM.exit("kill",co)
+  luaunit.assertEquals(VM.coroutines,{})
+  VM.spawn(function() while true do VM.receive() end end)
+  luaunit.assertError(VM.exit,"kill",VM.self())
+  luaunit.assertEquals(VM.coroutines,{})
+end
+
 os.exit(luaunit.LuaUnit.run())

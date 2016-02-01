@@ -199,13 +199,8 @@ local function removeCo(co)
   VM.coroutines[co]=nil
 end
 
-function VM.exit(reason)
-  removeCo(RUNNING)
-  propogateExit('EXIT',RUNNING,reason)
-end
-
 receivedExit = function (co,msg)
-  if VM.co2flags[RUNNING].trap_exit then
+  if VM.co2flags[RUNNING].trap_exit and msg ~= 'kill' then
     return 'EXIT',co,msg
   elseif msg == "normal" then
       VM.receive()
@@ -278,6 +273,22 @@ local function checkQueue()
   end
   queue = {}
 end
+
+
+function VM.exit(reason,co)
+  if not co then
+    removeCo(RUNNING)
+    propogateExit('EXIT',RUNNING,reason)
+  elseif reason == "normal" and not co == VM.running() then
+    return
+  elseif co == ROOT then
+    queueExit('EXIT',co,reason)
+    checkQueue()
+  else
+    VM.send(co,'EXIT',co,reason)
+  end
+end
+
 
 --TODO change to private function?
 function VM.resume(co,...)
