@@ -120,13 +120,13 @@ function test_link2()
     end
     error(msg)
   end
-  local co = VM.spawn(linker)
   local co2 = VM.spawn(linker)
   local co3 = VM.spawn(linker)
+  local co4 = VM.spawn(linker)
   
-  VM.send(co,co2)
   VM.send(co2,co3)
-  VM.send(co,"die")
+  VM.send(co3,co4)
+  VM.send(co2,"die")
   luaunit.assertEquals(VM.coroutines,{})
 end
 
@@ -140,19 +140,33 @@ function test_link3()
   local co2 = VM.spawn(function() VM.receive() end)
 end
 
+function test_exit()
+  local co = function()
+    VM.exit("custom reason")
+    end
+  luaunit.assertError(VM.spawnlink,co)
+  co = VM.spawnlink(function()
+    VM.exit("normal")
+    end)
+  luaunit.assertEquals(VM.coroutines,{})
+end
+
 function test_trap_exit()
   local child
   local sup = function()
     child = VM.spawn(function() 
       VM.process_flag("trap_exit",true)
+      VM.receive()
       VM.receive() end)
     VM.link(child)
     VM.receive()
     error("An error!")
   end
   local co = VM.spawn(sup)
+  VM.process_flag("trap_exit",true)
   VM.link(co)
-  luaunit.assertError(VM.send,co,"amsg")
+  VM.send(co,"amsg")
+  --luaunit.assertError(VM.send,co,"amsg")
   luaunit.assertTrue(VM.coroutines[child])
   luaunit.assertTrue(VM.coroutines[co] == nil)
 end

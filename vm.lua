@@ -1,31 +1,34 @@
 local VM = {}
 
 local INDEX = 1
-local RUNNING = 1
+local ROOT = 1
+local RUNNING = ROOT
 VM.coroutines = {}
 VM.co2names = {}
 VM.co2flags = {}
 VM.links = {}
 VM.dead = {}
 VM.log = function (msg) print(msg) end
-local die = {false,"event","reason"}
+local queue = {}
 
 function VM.init()
   INDEX = 1
-  RUNNING = 1
+  ROOT = 1
+  RUNNING = ROOT
   VM.coroutines = {}
   VM.co2names = {}
-  VM.co2flags = {}
+  VM.co2flags = {{}}
+  VM.co2flags[ROOT]={}
   VM.links = {}
   VM.dead = {} 
-  die = {false,"event","reason"}
+  queue = {}
 end
 
 --TODO spawn_link
 VM.coroutines[1]=coroutine.running()
 
 function VM.self()
-  return 1
+  return ROOT
 end
 
 function VM.running()
@@ -102,41 +105,28 @@ local function unregisterLink(co)
   HashArrayRemoveValue(VM.links,co,RUNNING)
 end
 
-local function queueDeath(signal,...)
-  die = {true,signal,arg[1]}
+local function queueExit(signal,from,reason)
+  table.insert(queue,{signal,from,reason})
 end
 
-local function receivedExit(msg) end
+local function receivedExit(co,msg) end
 --TODO fix for loop
-local function propogate(signal,...)
---  local links ={}
---  for _,co in ipairs(VM.links[RUNNING]) do
---    table.insert(links,co)
---  end
---  for _,co in ipairs(links) do
---    if VM.links[co] == RUNNING then
---      unregisterLink(co)
---      VM.send(co,signal,unpack(arg))
---    end
---  end
-  
-  while VM.links[RUNNING] do
-    local co = VM.links[RUNNING][1]
+
+
+local function propogateExit(signal,source,reason)
+  while VM.links[source] do
+    local co = VM.links[source][1]
     unregisterLink(co)
-    if co == 1 then
-      queueDeath(signal,unpack(arg))
-    elseif VM.coroutines[co]==coroutine.running() then
+    --Special case when propogateExit already running in the first coroutine
+    if VM.coroutines[co]==coroutine.running() then
       RUNNING = co
-      receivedExit(arg[1])
+      receivedExit(source,reason)
+    elseif co == ROOT then
+      queueExit(signal,RUNNING,reason)
     else
-      VM.send(co,signal,unpack(arg))
+      VM.send(co,signal,source,reason)
     end
-  end    
---  for _,co in ipairs(VM.links[RUNNING]) do
---    unregisterLink(co)
---    VM.send(co,signal,unpack(arg))
---    
---  end
+  end
 end
 
 function VM.link(co)
@@ -209,20 +199,21 @@ local function removeCo(co)
   VM.coroutines[co]=nil
 end
 
-local function kill(co)
-  removeCo(co)
+function VM.exit(reason)
+  removeCo(RUNNING)
+  propogateExit('EXIT',RUNNING,reason)
 end
 
-receivedExit = function (msg)
-  --VM.log('EXIT '..RUNNING.." "..msg )
-  if VM.links[RUNNING] then
-    propogate('EXIT',msg)
-  end
+receivedExit = function (co,msg)
   if VM.co2flags[RUNNING].trap_exit then
-    return 'EXIT',msg
-    --VM.receive()
+    return 'EXIT',co,msg
+  elseif msg == "normal" then
+      VM.receive()
   else
-    kill(RUNNING)
+    if msg == "kill" then msg = "killed" end
+    removeCo(RUNNING)
+    propogateExit('EXIT',RUNNING,msg)
+    --yield from the now dead process to stop execution
     coroutine.yield()
   end
 end
@@ -231,22 +222,18 @@ function VM.process_flag(signal,value)
   VM.co2flags[RUNNING][signal]=value
 end
 
+--Coroutine has yielded an error.
 local function catchError(msg)
   VM.log("ERROR in Coroutine "..RUNNING..": "..msg)
-  kill(RUNNING)
+  removeCo(RUNNING)
   if VM.links[RUNNING] then
-    --VM.log("killing connected to "..RUNNING)
-    propogate('EXIT',msg)
+    propogateExit('EXIT',RUNNING,msg)
   end
---  if VM.co2flags[RUNNING].trap_exit then
---    VM.log("ERROR in Coroutine "..RUNNING..": "..msg)
---  else
---    error(msg,4)
---  end
 end
 
 --TODO queue resume till later?
 --TODO rehash coroutine lists into single object?
+
 
 local function init(fun)
   INDEX = INDEX + 1
@@ -272,6 +259,25 @@ function VM.spawnlink(fun)
   return co
 end
 
+local function checkQueue()
+  for i,e in ipairs(queue) do
+    if e[1]=="EXIT" then
+      if VM.co2flags[ROOT].trap_exit then
+        VM.log('exception exit: '..e[3])
+      else
+        if e[3] == "normal" then
+          break
+        else
+          VM.init()
+          error("exception exit: "..e[3],4)
+        end
+      end
+    else
+      VM.log('Received unkown signal: '..e[1])
+    end
+  end
+  queue = {}
+end
 
 --TODO change to private function?
 function VM.resume(co,...)
@@ -282,12 +288,14 @@ function VM.resume(co,...)
   if not ok then
     VM.log(RUNNING.." died, returning to "..parent)
     catchError(e)
-    --io.stdin:read'*l'
   elseif coroutine.status(thread)=="dead" then
-    removeCo(co)
+    removeCo(RUNNING)
+    propogateExit('EXIT',RUNNING,"normal")
   end
   RUNNING = parent
-  if die[1] then error(die[2].." "..die[3],3) end
+  if RUNNING == ROOT then
+    checkQueue()
+  end
 end
 
 function VM.send(co,...)
@@ -303,13 +311,13 @@ end
 
 
 
-local function postYield(co,event,...)
-  RUNNING = co
+local function postYield(event,...)
+    --TODO terminate bad behaviour?
     if event == "terminate" then
-      kill(RUNNING)
+      removeCo(RUNNING)
       coroutine.yield()
     elseif event == "EXIT" then
-      return receivedExit(arg[1])
+      return receivedExit(arg[1],arg[2])
     else
       return event,unpack(arg)
     end
@@ -317,7 +325,7 @@ local function postYield(co,event,...)
 
 function VM.receive()
   local co = RUNNING
-  return postYield(co,coroutine.yield())
+  return postYield(coroutine.yield())
 end
 
 ---------
