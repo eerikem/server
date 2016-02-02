@@ -32,11 +32,15 @@ end
 
 
 function gen_server.start(Module, Args, Options, ServerName)
-  return VM.spawn(function() init(Module,unpack(Args)) end)
+  local co = VM.spawn(function() init(Module,unpack(Args)) end)
+  VM.registerName(ServerName,co)
+  return co
 end
 
 function gen_server.start_link(Module, Args, Options, ServerName)
-  return VM.spawnlink(function() init(Module,unpack(Args)) end)
+  local co =  VM.spawnlink(function() init(Module,unpack(Args)) end)
+  VM.registerName(ServerName,co)
+  return co
 end
 
 

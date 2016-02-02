@@ -10,6 +10,7 @@ VM.links = {}
 VM.dead = {}
 VM.log = function (msg) print(msg) end
 local queue = {}
+local STACK_DEPTH = 0
 
 function VM.init()
   INDEX = 1
@@ -22,9 +23,9 @@ function VM.init()
   VM.links = {}
   VM.dead = {} 
   queue = {}
+  STACK_DEPTH = 0
 end
 
---TODO spawn_link
 VM.coroutines[1]=coroutine.running()
 
 function VM.self()
@@ -33,6 +34,20 @@ end
 
 function VM.running()
   return RUNNING
+end
+
+function VM.depth()
+  return STACK_DEPTH
+end
+
+local function inc()
+  STACK_DEPTH = STACK_DEPTH + 1
+  if STACK_DEPTH > 6 then
+    VM.log("Warning: Stack Depth reached "..STACK_DEPTH) end
+end
+
+local function dec()
+  STACK_DEPTH = STACK_DEPTH - 1
 end
 
 function VM.status(co)
@@ -295,7 +310,9 @@ function VM.resume(co,...)
   local parent = RUNNING
   RUNNING = co
   local thread = VM.coroutines[co]
+  inc()
   local ok, e = coroutine.resume(thread,unpack(arg))
+  dec()
   if not ok then
     VM.log(RUNNING.." died, returning to "..parent)
     catchError(e)
