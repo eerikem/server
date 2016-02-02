@@ -189,4 +189,8 @@ function test_kill()
   luaunit.assertEquals(VM.coroutines,{})
 end
 
+function test_monitor()
+  --local co = VM.spawn(function() VM.receive() exit("boom"))
+end
+
 os.exit(luaunit.LuaUnit.run())

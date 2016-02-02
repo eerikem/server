@@ -45,7 +45,7 @@ end
 --Utility Functions--
 ---------------------
 
-local function HashArrayInsert(list,index,item)
+function HashArrayInsert(list,index,item)
   if not list[index] then
     list[index]={item}
   else
@@ -54,7 +54,7 @@ local function HashArrayInsert(list,index,item)
 end
 
 --Removes single list item from HashArray
-local function HashArrayRemoveValue(list,index,item)
+function HashArrayRemoveValue(list,index,item)
   for x,_item in pairs(list[index]) do
     if _item == item then
       table.remove(list[index],x)
@@ -68,7 +68,7 @@ end
 
 --takes a list from hash, clears another list
 --of those items, then deletes the list
-local function purgeItemsFromHash(hash,index,list)
+function purgeItemsFromHash(hash,index,list)
   for _, item in pairs(hash[index]) do
     list[item] = nil
   end
@@ -76,7 +76,7 @@ local function purgeItemsFromHash(hash,index,list)
 end
 
 --similar to above but purges from HashArray
-local function purgeItemsFromHashArray(hash,index,list)
+function purgeItemsFromHashArray(hash,index,list)
   for item, _ in pairs(hash[index]) do
     list[item][index]=nil
   end
@@ -314,7 +314,7 @@ function VM.send(co,...)
     if not VM.coroutines[co] then
       error("badarg: "..co.." not a registered coroutine")
     end
-  elseif not (type(co) == "number") then error("badarg: "..co,2) end
+  elseif not (type(co) == "number") then error("badarg: ",3) end
   if VM.coroutines[co] then
     VM.resume(co,unpack(arg))
   end
