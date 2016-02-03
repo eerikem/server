@@ -22,13 +22,12 @@ end
 
 function test_send()
   local msg,msg2
-  local co = VM.spawn(function() msg,msg2 = coroutine.yield() end)
+  local co = VM.spawn(function() msg,msg2 = VM.receive() end)
   VM.send(co,"a message","second msg")
   luaunit.assert_equals(msg,"a message")
   luaunit.assert_equals(msg2,"second msg")
   --send doesn't fail except for badarg
   luaunit.assertError(VM.send,{"badarg"},"msg")
-  VM.send(-1,"msg")
   luaunit.assertErrorMsgContains("badarg",VM.send,"badname","msg")
 end
 
@@ -49,11 +48,11 @@ end
 function test_register()
   local co = VM.spawn(function() VM.receive() end)
   VM.register("routine",co)
-  luaunit.assertEquals(VM.registered(),{"routine"})
+  luaunit.assertEquals(VM.registered(),{"ROOT","routine"})
   luaunit.assertEquals(VM.co2names,{[co]={"routine"}})
   luaunit.assertEquals(VM.coroutines["routine"],VM.coroutines[co])
   VM.resume(co)
-  luaunit.assertEquals(VM.registered(),{})
+  luaunit.assertEquals(VM.registered(),{"ROOT"})
   luaunit.assertErrorMsgContains("badarg",VM.register,"routine",co)
   local deadCo = VM.spawn(function() end)
   luaunit.assertErrorMsgContains("badarg",VM.register,"imdead",deadCo)
@@ -108,7 +107,7 @@ function test_link()
   --luaunit.assertEquals(_error,"error")
   --luaunit.assertStrIContains(msg,"Some error")
   luaunit.assertTrue(unreachable)
-  luaunit.assertEquals(VM.coroutines,{})
+  luaunit.assertEquals(VM.coroutines,{ROOT="ROOT"})
 end
 
 function test_link2()
@@ -127,7 +126,7 @@ function test_link2()
   VM.send(co2,co3)
   VM.send(co3,co4)
   VM.send(co2,"die")
-  luaunit.assertEquals(VM.coroutines,{})
+  luaunit.assertEquals(VM.coroutines,{ROOT="ROOT"})
 end
 
 --TODO test a flagged routine that throws an error
@@ -148,7 +147,7 @@ function test_exit()
   co = VM.spawnlink(function()
     VM.exit("normal")
     end)
-  luaunit.assertEquals(VM.coroutines,{})
+  luaunit.assertEquals(VM.coroutines,{ROOT="ROOT"})
 end
 
 function test_trap_exit()
@@ -183,10 +182,10 @@ function test_kill()
   VM.exit("a reason",co)
   luaunit.assertTrue(VM.coroutines[co])
   VM.exit("kill",co)
-  luaunit.assertEquals(VM.coroutines,{})
+  luaunit.assertEquals(VM.coroutines,{ROOT="ROOT"})
   VM.spawn(function() while true do VM.receive() end end)
   luaunit.assertError(VM.exit,"kill",VM.self())
-  luaunit.assertEquals(VM.coroutines,{})
+  luaunit.assertEquals(VM.coroutines,{ROOT="ROOT"})
 end
 
 function test_monitor()

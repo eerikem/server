@@ -4,11 +4,10 @@ local gen_server = {}
 
 function gen_server.call(Co, Request, Timeout)
   if not Timeout then Timeout = 5 end
-  local Ref = VM.monitor("process",Co)
+  --local Ref = VM.monitor("process",Co)
+  local Ref = nil--TODO VM.monitor
   VM.send(Co,"sync",Request,VM.running(),Ref)
-  --VM.receive(Timeout)
-  --TODO Revise VM.send to be truly async
-  --TODO VM.monitor
+  return VM.receive(Timeout)
 end
 
 function gen_server.cast(Co, Request)
@@ -39,7 +38,7 @@ end
 
 function gen_server.start_link(Module, Args, Options, ServerName)
   local co =  VM.spawnlink(function() init(Module,unpack(Args)) end)
-  VM.registerName(ServerName,co)
+  if ServerName then VM.register(ServerName,co) end
   return co
 end
 

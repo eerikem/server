@@ -1,7 +1,7 @@
 local VM = {}
 
 local INDEX = 1
-local ROOT = 1
+local ROOT = "ROOT"
 local RUNNING = ROOT
 VM.coroutines = {}
 VM.co2names = {}
@@ -9,24 +9,31 @@ VM.co2flags = {}
 VM.links = {}
 VM.dead = {}
 VM.log = function (msg) print(msg) end
+VM.mailbox = {}
+VM.receiving = {}
 local queue = {}
 local STACK_DEPTH = 0
+local ROTATOR = 1
 
 function VM.init()
   INDEX = 1
-  ROOT = 1
+  ROOT = "ROOT"
   RUNNING = ROOT
   VM.coroutines = {}
+  VM.coroutines[ROOT]=ROOT
   VM.co2names = {}
-  VM.co2flags = {{}}
+  VM.co2flags = {}
   VM.co2flags[ROOT]={}
   VM.links = {}
   VM.dead = {} 
+  VM.mailbox = {}
+  VM.mailbox[ROOT]={}
+  VM.receiving = {}
   queue = {}
   STACK_DEPTH = 0
+  ROTATOR = 1
 end
 
-VM.coroutines[1]=coroutine.running()
 
 function VM.self()
   return ROOT
@@ -133,7 +140,7 @@ local function propogateExit(signal,source,reason)
     local co = VM.links[source][1]
     unregisterLink(co)
     --Special case when propogateExit already running in the first coroutine
-    if VM.coroutines[co]==coroutine.running() then
+    if co==coroutine.running() then
       RUNNING = co
       receivedExit(source,reason)
     elseif co == ROOT then
@@ -193,9 +200,9 @@ function VM.register(name,co)
   if VM.coroutines[name] then
     error("badarg: "..name.." already registered",2)
   elseif VM.status(co) == "dead" then
-    error("badarg: Cannot register dead coroutine "..co,2)
+    error("badarg: Cannot register dead coroutine",2)
   elseif not VM.coroutines[co] then
-    error("badarg: Cannot find coroutine "..co)
+    error("badarg: Cannot find coroutine")
   else
     registerName(name,co)
   end
@@ -210,6 +217,7 @@ local function removeCo(co)
   --for k,v in pairs(VM.coroutines) do VM.log(k,v) end
   if VM.co2names[co] then
     unregisterNames(co) end
+  VM.mailbox[co]=nil
   VM.dead[co] = VM.coroutines[co]
   VM.coroutines[co]=nil
 end
@@ -234,7 +242,7 @@ end
 
 --Coroutine has yielded an error.
 local function catchError(msg)
-  VM.log("ERROR in Coroutine "..RUNNING..": "..msg)
+  VM.log("ERROR in Coroutine: "..msg)
   removeCo(RUNNING)
   if VM.links[RUNNING] then
     propogateExit('EXIT',RUNNING,msg)
@@ -247,11 +255,11 @@ end
 
 local function init(fun)
   INDEX = INDEX + 1
-  --VM.log("Spawning coroutine "..INDEX)
-  VM.coroutines[INDEX]=coroutine.create(fun)
-  VM.co2flags[INDEX]={}
-  local co = INDEX
-  return INDEX
+  local co = coroutine.create(fun)
+  VM.coroutines[co]=co
+  VM.co2flags[co]={}
+  VM.mailbox[co]={}
+  return co
 end
 
 function VM.spawn(fun)
@@ -311,10 +319,11 @@ function VM.resume(co,...)
   RUNNING = co
   local thread = VM.coroutines[co]
   inc()
+  if(type(thread)=="string")then error("bad call",4) end
   local ok, e = coroutine.resume(thread,unpack(arg))
   dec()
   if not ok then
-    VM.log(RUNNING.." died, returning to "..parent)
+    VM.log("Coroutine died, returning to parent")
     catchError(e)
   elseif coroutine.status(thread)=="dead" then
     removeCo(RUNNING)
@@ -326,14 +335,32 @@ function VM.resume(co,...)
   end
 end
 
+local function flush()
+  local co = nil
+  for n,Co in ipairs(VM.receiving) do
+    if next(VM.mailbox[Co]) then 
+      co = table.remove(VM.receiving,n)
+      break
+    end
+  end--TODO co~= ROOT resuming problem...
+  if co and co ~= ROOT then --TODO why is the necessary?
+    VM.resume(co,unpack(table.remove(VM.mailbox[co],1)))
+  end
+end
+
 function VM.send(co,...)
   if type(co) == "string" then
     if not VM.coroutines[co] then
       error("badarg: "..co.." not a registered coroutine")
+    else
+      co = VM.coroutines[co]
     end
-  elseif not (type(co) == "number") then error("badarg: ",3) end
+  elseif not (type(co) == "thread") then error("badarg: "..type(co),3)
+  elseif not arg then error("badarg: cannot send nil",3) end
   if VM.coroutines[co] then
-    VM.resume(co,unpack(arg))
+    HashArrayInsert(VM.mailbox,co,arg)
+    --VM.resume(co,unpack(arg))
+    flush()
   end
 end
 
@@ -352,7 +379,10 @@ local function postYield(event,...)
   end
 
 function VM.receive()
-  local co = RUNNING
+  table.insert(VM.receiving,RUNNING)
+  if RUNNING == ROOT then
+    return postYield(unpack(table.remove(VM.mailbox[ROOT],1)))
+  end
   return postYield(coroutine.yield())
 end
 
