@@ -217,7 +217,7 @@ local function removeCo(co)
   --for k,v in pairs(VM.coroutines) do VM.log(k,v) end
   if VM.co2names[co] then
     unregisterNames(co) end
-  VM.mailbox[co]=nil
+  VM.mailbox[co]=nil  
   VM.dead[co] = VM.coroutines[co]
   VM.coroutines[co]=nil
 end
@@ -320,7 +320,7 @@ function VM.resume(co,...)
   local thread = VM.coroutines[co]
   inc()
   if(type(thread)=="string")then error("bad call",4) end
-  local ok, e = coroutine.resume(thread,unpack(arg))
+  local ok, e = coroutine.resume(thread,...)
   dec()
   if not ok then
     VM.log("Coroutine died, returning to parent")
@@ -335,23 +335,41 @@ function VM.resume(co,...)
   end
 end
 
-local function flush()
+local function getReadyCo()
   local co = nil
   for n,Co in ipairs(VM.receiving) do
-    if next(VM.mailbox[Co]) then 
-      co = table.remove(VM.receiving,n)
-      break
+    if Co ~= ROOT then--Cannot resume Root, causes circular resume
+      if not VM.coroutines[Co] then --purge dead routines
+        table.remove(VM.receiving,n)
+      elseif next(VM.mailbox[Co]) then  --fetch coroutine
+        return table.remove(VM.receiving,n)
+      end
     end
-  end--TODO co~= ROOT resuming problem...
-  if co and co ~= ROOT then --TODO why is the necessary?
-    VM.resume(co,unpack(table.remove(VM.mailbox[co],1)))
   end
+  return nil
+end
+
+local function flush()
+  local co = getReadyCo()
+  if co then VM.resume(co,unpack(table.remove(VM.mailbox[co],1)))
+    flush()
+  end
+--  elseif next(VM.mailbox[ROOT]) then
+--    return
+--  end
+end
+
+function VM.flush()
+  local t ={}
+  while next(VM.mailbox[ROOT]) do
+    table.insert(t,table.remove(VM.mailbox[ROOT],1)) end
+  return t 
 end
 
 function VM.send(co,...)
   if type(co) == "string" then
     if not VM.coroutines[co] then
-      error("badarg: "..co.." not a registered coroutine")
+      error("badarg: "..co.." not a registered coroutine",2)
     else
       co = VM.coroutines[co]
     end
@@ -359,7 +377,7 @@ function VM.send(co,...)
   elseif not arg then error("badarg: cannot send nil",3) end
   if VM.coroutines[co] then
     HashArrayInsert(VM.mailbox,co,arg)
-    --VM.resume(co,unpack(arg))
+    --VM.resume(co,...)
     flush()
   end
 end
@@ -381,7 +399,9 @@ local function postYield(event,...)
 function VM.receive()
   table.insert(VM.receiving,RUNNING)
   if RUNNING == ROOT then
-    return postYield(unpack(table.remove(VM.mailbox[ROOT],1)))
+    if next(VM.mailbox[ROOT]) then
+      return postYield(unpack(table.remove(VM.mailbox[ROOT],1)))
+    else return end
   end
   return postYield(coroutine.yield())
 end

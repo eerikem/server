@@ -26,7 +26,7 @@ local function loop(Module,State)
 end
 
 local function init(Module, ...)
-  loop(Module,Module.init(unpack(arg)))
+  loop(Module,Module.init(...))
 end
 
 
