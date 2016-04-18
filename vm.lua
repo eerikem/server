@@ -142,11 +142,11 @@ local function propogateExit(signal,source,reason)
     --Special case when propogateExit already running in the first coroutine
     if co==coroutine.running() then
       RUNNING = co
-      receivedExit(source,reason)
+      return receivedExit(source,reason)
     elseif co == ROOT then
-      queueExit(signal,RUNNING,reason)
+      return queueExit(signal,RUNNING,reason)
     else
-      VM.send(co,signal,source,reason)
+      return VM.send(co,signal,source,reason)
     end
   end
 end
@@ -188,12 +188,17 @@ function VM.unregister(name)
   return true
 end
 
-function VM.registered()
-  local names = {}
-  for key,_ in pairs(VM.coroutines) do
-    if type(key)=="string" then table.insert(names,key) end
+function VM.registered(name)
+  if name then
+    if VM.coroutines[name] then return true
+    else return false end
+  else
+    local names = {}
+    for key,_ in pairs(VM.coroutines) do
+      if type(key)=="string" then table.insert(names,key) end
+    end
+    return names
   end
-  return names
 end
 
 function VM.register(name,co)
@@ -226,13 +231,13 @@ receivedExit = function (co,msg)
   if VM.co2flags[RUNNING].trap_exit and msg ~= 'kill' then
     return 'EXIT',co,msg
   elseif msg == "normal" then
-      VM.receive()
+    return VM.receive()
   else
     if msg == "kill" then msg = "killed" end
     removeCo(RUNNING)
     propogateExit('EXIT',RUNNING,msg)
     --yield from the now dead process to stop execution
-    coroutine.yield()
+    return coroutine.yield()
   end
 end
 
@@ -245,7 +250,7 @@ local function catchError(msg)
   VM.log("ERROR in Coroutine: "..msg)
   removeCo(RUNNING)
   if VM.links[RUNNING] then
-    propogateExit('EXIT',RUNNING,msg)
+    return propogateExit('EXIT',RUNNING,msg)
   end
 end
 
@@ -286,8 +291,8 @@ local function checkQueue()
         if e[3] == "normal" then
           break
         else
-          VM.init()
-          error("exception exit: "..e[3],4)
+          VM.init()--todo restart VM?!?
+          error("exception exit: "..e[3],5)
         end
       end
     else
@@ -301,14 +306,14 @@ end
 function VM.exit(reason,co)
   if not co then
     removeCo(RUNNING)
-    propogateExit('EXIT',RUNNING,reason)
+    return propogateExit('EXIT',RUNNING,reason)
   elseif reason == "normal" and not co == VM.running() then
     return
   elseif co == ROOT then
     queueExit('EXIT',co,reason)
-    checkQueue()
+    return checkQueue()
   else
-    VM.send(co,'EXIT',co,reason)
+    return VM.send(co,'EXIT',co,reason)
   end
 end
 
@@ -331,7 +336,7 @@ function VM.resume(co,...)
   end
   RUNNING = parent
   if RUNNING == ROOT then
-    checkQueue()
+    return checkQueue()
   end
 end
 
@@ -352,7 +357,7 @@ end
 local function flush()
   local co = getReadyCo()
   if co then VM.resume(co,unpack(table.remove(VM.mailbox[co],1)))
-    flush()
+    return flush()
   end
 --  elseif next(VM.mailbox[ROOT]) then
 --    return
@@ -373,28 +378,28 @@ function VM.send(co,...)
     else
       co = VM.coroutines[co]
     end
-  elseif not (type(co) == "thread") then error("badarg: "..type(co),3)
+  elseif not (type(co) == "thread") then error("badarg: "..type(co),2)
   elseif not arg then error("badarg: cannot send nil",3) end
   if VM.coroutines[co] then
     HashArrayInsert(VM.mailbox,co,arg)
     --VM.resume(co,...)
-    flush()
+    return flush()
   end
 end
 
 
 
 local function postYield(event,...)
-    --TODO terminate bad behaviour?
-    if event == "terminate" then
-      removeCo(RUNNING)
-      coroutine.yield()
-    elseif event == "EXIT" then
-      return receivedExit(arg[1],arg[2])
-    else
-      return event,unpack(arg)
-    end
+  --TODO terminate bad behaviour?
+  if event == "terminate" then
+    removeCo(RUNNING)
+    return coroutine.yield()
+  elseif event == "EXIT" then
+    return receivedExit(arg[1],arg[2])
+  else
+    return event,unpack(arg)
   end
+end
 
 function VM.receive()
   table.insert(VM.receiving,RUNNING)

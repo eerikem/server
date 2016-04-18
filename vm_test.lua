@@ -1,6 +1,7 @@
 local VM = require 'vm'
 
 luaunit = require 'luaunit'
+local gen_server = require 'gen_server'
 
 --TODO setup and teardown of the VM?
 function setup_each()
@@ -191,5 +192,18 @@ end
 function test_monitor()
   --local co = VM.spawn(function() VM.receive() exit("boom"))
 end
+
+function test_gen_server()
+  local server = {}
+  function server.start_link() return gen_server.start_link(server,{},{}) end
+  function server.init() return {} end
+  function server.handle_call(Req,From,State)
+    gen_server.reply(From,"ok")
+    return State
+  end
+  local co = server.start_link()
+  luaunit.assertEquals(gen_server.call(co,"hello"),"ok")
+end
+
 
 os.exit(luaunit.LuaUnit.run())
