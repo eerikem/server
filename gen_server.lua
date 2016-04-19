@@ -33,7 +33,7 @@ end
 
 local function loop(Module,State)
   local Response = {VM.receive()}
-  if table.maxn == 4 then
+  if table.maxn(Response) == 3 or table.maxn(Response) == 4 then
     local Type, Msg, Co, Ref = unpack(Response) 
     if Type == "async" then
       return loop(Module,Module.handle_cast(Msg,State))
