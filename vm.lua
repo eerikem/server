@@ -1,22 +1,16 @@
 local VM = {}
 
 local INDEX = 1
+local MON_REF = 1
 local ROOT = "ROOT"
 local RUNNING = ROOT
-VM.coroutines = {}
-VM.co2names = {}
-VM.co2flags = {}
-VM.links = {}
-VM.dead = {}
-VM.log = function (msg) print(msg) end
-VM.mailbox = {}
-VM.receiving = {}
 local queue = {}
 local STACK_DEPTH = 0
 local ROTATOR = 1
 
 function VM.init()
   INDEX = 1
+  MON_REF = 1
   ROOT = "ROOT"
   RUNNING = ROOT
   VM.coroutines = {}
@@ -25,7 +19,10 @@ function VM.init()
   VM.co2flags = {}
   VM.co2flags[ROOT]={}
   VM.links = {}
+  VM.monitors = {}
+  VM.watching = {}
   VM.dead = {} 
+  VM.log = function (msg) print(msg) end
   VM.mailbox = {}
   VM.mailbox[ROOT]={}
   VM.receiving = {}
@@ -34,6 +31,7 @@ function VM.init()
   ROTATOR = 1
 end
 
+VM.init()
 
 function VM.self()
   return ROOT
@@ -67,21 +65,21 @@ end
 --Utility Functions--
 ---------------------
 
-function HashArrayInsert(list,index,item)
-  if not list[index] then
-    list[index]={item}
+function HashArrayInsert(hash,key,item)
+  if not hash[key] then
+    hash[key]={item}
   else
-    table.insert(list[index],item)
+    table.insert(hash[key],item)
   end
 end
 
 --Removes single list item from HashArray
-function HashArrayRemoveValue(list,index,item)
-  for x,_item in pairs(list[index]) do
+function HashArrayRemoveValue(hash,key,item)
+  for x,_item in pairs(hash[key]) do
     if _item == item then
-      table.remove(list[index],x)
-      if table.getn(list[index]) == 0 then
-        list[index] = nil
+      table.remove(hash[key],x)
+      if table.getn(hash[key]) == 0 then
+        hash[key] = nil
       end
       break
     end
@@ -103,6 +101,56 @@ function purgeItemsFromHashArray(hash,index,list)
     list[item][index]=nil
   end
   hash[index] = nil
+end
+
+------------
+--Monitors--
+------------
+
+local function ref()
+  MON_REF = MON_REF + 1
+  return "#ref"..MON_REF
+end
+
+function VM.monitor(Type,obj)
+  if not type(Type) == "string" or not obj then error("badarg,2") end
+  if Type == "process" then
+    local ref = ref()
+    VM.monitors[ref]={target = obj, watching = VM.running()}
+    HashArrayInsert(VM.monitors,obj,ref)
+    HashArrayInsert(VM.watching,VM.running(),ref)
+    return ref
+  end
+end
+
+function VM.demonitor(ref,options)
+  if not ref then error("badarg",2) end
+  if VM.monitors[ref] then
+    local mon = VM.monitors[ref]
+    HashArrayRemoveValue(VM.monitors,mon.target,ref)
+    HashArrayRemoveValue(VM.watching,mon.watching,ref)
+    VM.monitors[ref]=nil
+    return true
+  end
+  return false
+end
+
+--removes monitors created by co
+local function removeMonitorsBy(co)
+  for _,ref in ipairs(VM.watching[co]) do
+    local mon = VM.monitors[ref]
+    HashArrayRemoveValue(VM.monitors,mon.target,ref)
+    VM.monitors[ref] = nil
+  end
+  VM.watching[co] = nil
+end
+
+local function notifyMonitors(co,reason)
+  if VM.monitors[co] then
+    for _,ref in ipairs(VM.monitors[co]) do
+      VM.send(VM.monitors[ref].watching,'DOWN',ref,"process",co,reason)
+    end
+  end
 end
 
 ---------
@@ -134,7 +182,7 @@ end
 local function receivedExit(co,msg) end
 --TODO fix for loop
 
-
+--TODO bad shared state?! co's getting killed but VM.links still going?
 local function propogateExit(signal,source,reason)
   while VM.links[source] do
     local co = VM.links[source][1]
@@ -142,11 +190,11 @@ local function propogateExit(signal,source,reason)
     --Special case when propogateExit already running in the first coroutine
     if co==coroutine.running() then
       RUNNING = co
-      return receivedExit(source,reason)
+      receivedExit(source,reason)
     elseif co == ROOT then
-      return queueExit(signal,RUNNING,reason)
+      queueExit(signal,RUNNING,reason)
     else
-      return VM.send(co,signal,source,reason)
+      VM.send(co,signal,source,reason)
     end
   end
 end
@@ -236,6 +284,7 @@ receivedExit = function (co,msg)
     if msg == "kill" then msg = "killed" end
     removeCo(RUNNING)
     propogateExit('EXIT',RUNNING,msg)
+    notifyMonitors(RUNNING,msg)
     --yield from the now dead process to stop execution
     return coroutine.yield()
   end
@@ -245,12 +294,13 @@ function VM.process_flag(signal,value)
   VM.co2flags[RUNNING][signal]=value
 end
 
---Coroutine has yielded an error.
+--Coroutine has yielded a new error.
 local function catchError(msg)
   VM.log("ERROR in Coroutine: "..msg)
   removeCo(RUNNING)
   if VM.links[RUNNING] then
-    return propogateExit('EXIT',RUNNING,msg)
+    propogateExit('EXIT',RUNNING,msg)
+    return notifyMonitors(RUNNING,msg)
   end
 end
 
@@ -282,6 +332,14 @@ function VM.spawnlink(fun)
   return co
 end
 
+function VM.spawn_monitor(fun)
+  if not ("function"==type(fun)) then error("badarg: Not a function",2) end
+  local co = init(fun)
+  local ref = VM.monitor("process",co)
+  VM.resume(co)
+  return co,ref
+end
+
 local function checkQueue()
   for i,e in ipairs(queue) do
     if e[1]=="EXIT" then
@@ -306,7 +364,8 @@ end
 function VM.exit(reason,co)
   if not co then
     removeCo(RUNNING)
-    return propogateExit('EXIT',RUNNING,reason)
+    propogateExit('EXIT',RUNNING,reason)
+    return notifyMonitors(RUNNING,reason)
   elseif reason == "normal" and not co == VM.running() then
     return
   elseif co == ROOT then
@@ -333,6 +392,7 @@ function VM.resume(co,...)
   elseif coroutine.status(thread)=="dead" then
     removeCo(RUNNING)
     propogateExit('EXIT',RUNNING,"normal")
+    notifyMonitors(RUNNING,"normal")
   end
   RUNNING = parent
   if RUNNING == ROOT then
@@ -368,7 +428,7 @@ function VM.flush()
   local t ={}
   while next(VM.mailbox[ROOT]) do
     table.insert(t,table.remove(VM.mailbox[ROOT],1)) end
-  return t 
+  return t
 end
 
 function VM.send(co,...)

@@ -1,4 +1,4 @@
-local VM = require 'vm'
+VM = require 'vm'
 
 luaunit = require 'luaunit'
 local gen_server = require 'gen_server'
@@ -189,8 +189,37 @@ function test_kill()
   luaunit.assertEquals(VM.coroutines,{ROOT="ROOT"})
 end
 
+function test_flush()
+  VM.send(VM.running(),"Hello!")
+  VM.send(VM.running(),"Hello again.")
+  VM.send(VM.running(),"Goodbye?")
+  local results = VM.flush()
+  luaunit.assertEquals(results[1][1],"Hello!")
+  luaunit.assertEquals(results[3][1],"Goodbye?")
+end
+
 function test_monitor()
-  --local co = VM.spawn(function() VM.receive() exit("boom"))
+  local co = VM.spawn(function() VM.receive() VM.exit("boom") end)
+  local ref = VM.monitor("process",co)
+  luaunit.assertEquals(VM.monitors[ref],{target=co,watching=VM.running()})
+  luaunit.assertTrue(ref)
+  VM.send(co,"exit")
+  local result = VM.flush()
+  luaunit.assertEquals(result[1],{'DOWN',ref,"process",co,"boom",n=5})
+end
+
+function test_spawn_mon()
+  local co,ref = VM.spawn_monitor(function() VM.receive() end)
+  luaunit.assertEquals(VM.monitors[ref],{target=co,watching=VM.running()})
+end
+
+function test_demonitor()
+  local co,ref = VM.spawn_monitor(function() VM.receive() end)
+  local bool = VM.demonitor(ref)
+  luaunit.assertTrue(bool)
+  VM.send(co,"die")
+  local r = VM.flush()
+  luaunit.assertEquals(r,{})
 end
 
 function test_gen_server()
@@ -204,6 +233,5 @@ function test_gen_server()
   local co = server.start_link()
   luaunit.assertEquals(gen_server.call(co,"hello"),"ok")
 end
-
 
 os.exit(luaunit.LuaUnit.run())
