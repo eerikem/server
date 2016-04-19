@@ -32,14 +32,16 @@ function gen_server.cast(Co, Request)
 end
 
 local function loop(Module,State)
-  local Type, Msg, Co, Ref = VM.receive()
-  if Type == "async" then
-    return loop(Module,Module.handle_cast(Msg,State))
-  elseif Type == "sync" then
-    return loop(Module,Module.handle_call(Msg,{Co,Ref},State))
-  else
-    return loop(Module,Module.handle_info(Type,State))
+  local Response = {VM.receive()}
+  if table.maxn == 4 then
+    local Type, Msg, Co, Ref = unpack(Response) 
+    if Type == "async" then
+      return loop(Module,Module.handle_cast(Msg,State))
+    elseif Type == "sync" then
+      return loop(Module,Module.handle_call(Msg,{Co,Ref},State))
+    end
   end
+  return loop(Module,Module.handle_info(Response,State))
 end
 
 function gen_server.reply(From,Reply)
