@@ -19,10 +19,10 @@ function gen_server.call(Co, Request, Timeout)
     elseif table.maxn(Response) == 5 then
       local exit,_Ref,type,_Co,Reason = unpack(Response)
       if exit == "DOWN" and Ref == _Ref and type == "process" and Co == _Co then
-        error(Reason)
+        error(Reason,2)
       end
     else
-      error("Bad reply to gen_server.call")
+      error("Bad reply to gen_server.call",2)
     end
   end
 end
@@ -33,7 +33,8 @@ end
 
 local function loop(Module,State)
   local Response = {VM.receive()}
-  if table.maxn(Response) == 3 or table.maxn(Response) == 4 then
+  --TODO better pattern matching on messages!?!?!?!?!
+  if table.maxn(Response) > 1 or table.maxn(Response) < 5 then
     local Type, Msg, Co, Ref = unpack(Response) 
     if Type == "async" then
       return loop(Module,Module.handle_cast(Msg,State))

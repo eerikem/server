@@ -26,6 +26,7 @@ function VM.init()
   VM.mailbox = {}
   VM.mailbox[ROOT]={}
   VM.receiving = {}
+  VM.resumes = {[ROOT]=0}
   queue = {}
   STACK_DEPTH = 0
   ROTATOR = 1
@@ -314,6 +315,7 @@ local function init(fun)
   VM.coroutines[co]=co
   VM.co2flags[co]={}
   VM.mailbox[co]={}
+  VM.resumes[co]=0
   return co
 end
 
@@ -349,7 +351,7 @@ local function checkQueue()
         if e[3] == "normal" then
           break
         else
-          VM.init()--todo restart VM?!?
+          VM.init()--TODO restart VM?!?
           error("exception exit: "..e[3],5)
         end
       end
@@ -382,6 +384,7 @@ function VM.resume(co,...)
   local parent = RUNNING
   RUNNING = co
   local thread = VM.coroutines[co]
+  VM.resumes[thread]=VM.resumes[thread]+1
   inc()
   if(type(thread)=="string")then error("bad call",4) end
   local ok, e = coroutine.resume(thread,...)
@@ -396,6 +399,7 @@ function VM.resume(co,...)
   end
   RUNNING = parent
   if RUNNING == ROOT then
+    VM.resumes[ROOT] = VM.resumes[ROOT] + 1
     return checkQueue()
   end
 end
@@ -414,6 +418,14 @@ local function getReadyCo()
   return nil
 end
 
+function VM.flush()
+  local t ={}
+  while next(VM.mailbox[ROOT]) do
+    table.insert(t,table.remove(VM.mailbox[ROOT],1)) end
+  return t
+end
+
+--loop until all Receiving coroutines with msgs read have executed
 local function flush()
   local co = getReadyCo()
   if co then VM.resume(co,unpack(table.remove(VM.mailbox[co],1)))
@@ -422,13 +434,6 @@ local function flush()
 --  elseif next(VM.mailbox[ROOT]) then
 --    return
 --  end
-end
-
-function VM.flush()
-  local t ={}
-  while next(VM.mailbox[ROOT]) do
-    table.insert(t,table.remove(VM.mailbox[ROOT],1)) end
-  return t
 end
 
 function VM.send(co,...)

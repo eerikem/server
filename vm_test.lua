@@ -234,4 +234,12 @@ function test_gen_server()
   luaunit.assertEquals(gen_server.call(co,"hello"),"ok")
 end
 
+--TODO useful???
+function test_VM_flush_loop()
+  local fun = function()
+    fun()
+  end
+  local co = VM.spawnlink(fun)
+end
+
 os.exit(luaunit.LuaUnit.run())
