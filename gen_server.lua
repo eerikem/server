@@ -1,4 +1,5 @@
 --local VM = require 'vm'
+local luaunit = require 'luaunit'
 --Warning uncommenting creates new VM instance in CC
 --TODO fix Require to not overwrite this?!?
 
@@ -22,7 +23,7 @@ function gen_server.call(Co, Request, Timeout)
         error(Reason,2)
       end
     else
-      error("Bad reply to gen_server.call",2)
+      error("Bad reply to: ".. luaunit.prettystr(Request,true) .."\ngen_server.call GOT: "..luaunit.prettystr(Response,true),2)
     end
   end
 end

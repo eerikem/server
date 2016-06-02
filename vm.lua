@@ -27,6 +27,7 @@ function VM.init()
   VM.mailbox[ROOT]={}
   VM.receiving = {}
   VM.resumes = {[ROOT]=0}
+  VM.parents = {[ROOT]=ROOT}
   queue = {}
   STACK_DEPTH = 0
   ROTATOR = 1
@@ -48,8 +49,9 @@ end
 
 local function inc()
   STACK_DEPTH = STACK_DEPTH + 1
-  if STACK_DEPTH > 6 then
-    VM.log("Warning: Stack Depth reached "..STACK_DEPTH) end
+  if STACK_DEPTH > 8 then
+    --VM.log("Warning: Stack Depth reached "..STACK_DEPTH) end
+    error("Stack Depth exceeded "..STACK_DEPTH) end
 end
 
 local function dec()
@@ -66,11 +68,15 @@ end
 --Utility Functions--
 ---------------------
 
-function HashArrayInsert(hash,key,item)
+function HashArrayInsert(hash,key,item,pos)
   if not hash[key] then
     hash[key]={item}
   else
-    table.insert(hash[key],item)
+    if pos then
+      table.insert(hash[key],pos,item)
+    else
+      table.insert(hash[key],item)
+    end
   end
 end
 
@@ -112,6 +118,8 @@ local function ref()
   MON_REF = MON_REF + 1
   return "#ref"..MON_REF
 end
+
+VM.ref = ref
 
 function VM.monitor(Type,obj)
   if not type(Type) == "string" or not obj then error("badarg,2") end
@@ -274,6 +282,8 @@ local function removeCo(co)
   VM.mailbox[co]=nil  
   VM.dead[co] = VM.coroutines[co]
   VM.coroutines[co]=nil
+  VM.resumes[co]=nil
+  VM.parents[co]=nil
 end
 
 receivedExit = function (co,msg)
@@ -316,6 +326,7 @@ local function init(fun)
   VM.co2flags[co]={}
   VM.mailbox[co]={}
   VM.resumes[co]=0
+  VM.parents[co]=VM.running()
   return co
 end
 
@@ -418,6 +429,7 @@ local function getReadyCo()
   return nil
 end
 
+--Flush all messages queued for ROOT process
 function VM.flush()
   local t ={}
   while next(VM.mailbox[ROOT]) do
@@ -467,6 +479,10 @@ local function postYield(event,...)
 end
 
 function VM.receive()
+  if next(VM.mailbox[RUNNING]) then
+    return postYield(unpack(table.remove(VM.mailbox[RUNNING],1)))
+  end
+  
   table.insert(VM.receiving,RUNNING)
   if RUNNING == ROOT then
     if next(VM.mailbox[ROOT]) then
