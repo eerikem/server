@@ -179,10 +179,13 @@ function test_kill()
     end
   end)
   VM.exit("normal",co)
+  VM.flushAll()
   luaunit.assertTrue(VM.coroutines[co])
   VM.exit("a reason",co)
+  VM.flushAll()
   luaunit.assertTrue(VM.coroutines[co])
   VM.exit("kill",co)
+  VM.flushAll()
   luaunit.assertEquals(VM.coroutines,{ROOT="ROOT"})
   VM.spawn(function() while true do VM.receive() end end)
   luaunit.assertError(VM.exit,"kill",VM.self())
@@ -232,14 +235,6 @@ function test_gen_server()
   end
   local co = server.start_link()
   luaunit.assertEquals(gen_server.call(co,"hello"),"ok")
-end
-
---TODO useful???
-function test_VM_flush_loop()
-  local fun = function()
-    fun()
-  end
-  local co = VM.spawnlink(fun)
 end
 
 os.exit(luaunit.LuaUnit.run())

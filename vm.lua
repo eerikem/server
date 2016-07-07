@@ -188,6 +188,7 @@ local function queueExit(signal,from,reason)
   table.insert(queue,{signal,from,reason})
 end
 
+--Overridden below
 local function receivedExit(co,msg) end
 --TODO fix for loop
 
@@ -447,6 +448,8 @@ local function flush()
 --    return
 --  end
 end
+
+VM.flushAll = flush
 
 function VM.send(co,...)
   if type(co) == "string" then
