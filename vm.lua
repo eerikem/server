@@ -110,6 +110,14 @@ function purgeItemsFromHashArray(hash,index,list)
   hash[index] = nil
 end
 
+function VM.exec(Module,Function,...)
+  if not Module or not Function or not Module[Function] then
+    error("Badarg",2)
+  else
+    return Module[Function](unpack(arg))
+  end
+end
+
 ------------
 --Monitors--
 ------------
@@ -416,6 +424,7 @@ function VM.resume(co,...)
   end
 end
 
+--TODO Optimize looping search for ready Coroutines.
 local function getReadyCo()
   local co = nil
   for n,Co in ipairs(VM.receiving) do

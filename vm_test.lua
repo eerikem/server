@@ -237,4 +237,11 @@ function test_gen_server()
   luaunit.assertEquals(gen_server.call(co,"hello"),"ok")
 end
 
+function test_exec()
+  local Mod = {}
+  function Mod.fun(x) return x end
+  luaunit.assertError(VM.exec,Mod,"bun",2)
+  luaunit.assertEquals(VM.exec(Mod,"fun",2),2)
+end
+
 os.exit(luaunit.LuaUnit.run())

@@ -1,4 +1,5 @@
-local supervisor = {}
+local gen_server = require 'gen_server'
+local Supervisor = {}
 
 --one_for_one = one dies, one restarted
 --one_for_all = for dependant workers
@@ -19,39 +20,75 @@ sup_flags = {stategy = "one_for_one",
   --Type: supervisor|worker
   --Modules: the Module or 'dynamic' for unkown cases such as eventHandlers
   
---TODO necessary?!?
-local function init(Module)
-  local Spec = Module.init()
+local function startChild(ChildSpec,State)
+    local ChildId, StartFunc,Restart,Shutdown,Type,Modules = unpack(ChildSpec)
+    local Mod, Start, Args = unpack(StartFunc)
+    local co = VM.exec(Mod,Start,unpack(Args))
+    table.insert(State.children,co)
+    State.childIds[ChildId]=co
+    State.childSpecs[co]=ChildSpec
+    return co
+end  
+
+function Supervisor.start_link(Module, Args, SupName)
+  return gen_server.start_link(Supervisor,{Module,Args},nil,SupName)
+end
+
+function Supervisor.count_children(SupRef)
+  return gen_server.call(SupRef,{"count"})
+end
+
+function Supervisor.which_children(SupRef)
+
+end
+
+function Supervisor.start_child(SupRef,ChildSpec)
+  return gen_server.call(SupRef,{"start_child",ChildSpec})
+end
+
+function Supervisor.init(Module,Args)
+  --{ok,{Restart,Childspecs}}
+  local Spec = Module.init(unpack(Args))
   if Spec[1] == "ok" then
-    local Children = Spec[2][2]
-    for _,ChildSpec in ipairs(Children) do
-      local ChildId, StartFunc,Restart,Shutdown,Type,Modules = unpack(ChildSpec)
-      local Module, Start, Args = unpack(StartFunc)
-      return Module[Start](unpack(Args))
+    local State = {supervisor = true,spec=Spec[2][1],children={},childIds={},childSpecs={}}
+    for _,ChildSpec in ipairs(Spec[2][2]) do
+      local ok, reason = startChild(ChildSpec,State)
+      if not ok then
+        return {"error",{"shutdown",reason}}
+      end
     end
+    return State
+  else
+    error("bad spec")
   end
 end
 
-function supervisor.start_link(Module, Args, SupName)
-  local co  = VM.spawn(function() return init(Module,Args) end)
-  if SupName then VM.register(SupName,co) end
-  return supervisor.start_link(Module, Args)
+function Supervisor.handle_call(Request,From,State)
+  local event = Request[1]
+  if event == "start_child" then
+    local ChildSpec = Request[2]
+    if State.childIds[ChildSpec[1]] then
+      gen_server.reply(From,{false,"already_present"})
+    else
+      local co = startChild(ChildSpec,State)
+      gen_server.reply(From,{true,co})
+    end
+  elseif event == "count" then
+    gen_server.reply(From,#State.children)
+  else
+    VM.log("Sup got: "..event)
+  end
+  return State
 end
 
-function supervisor.count_children(SupRef)
-  
+function Supervisor.handle_cast(Request,State)
+
+  return State
 end
 
-function supervisor.which_children(SupRef)
-
+function Supervisor.handleInfo(Request,State)
+  local event = Request[1]
+  return State
 end
 
-function supervisor.start_child(SupRef,ChildSpec)
-
-end
-
-function supervisor.init(Args)
-
-end
-
-return supervisor
+return Supervisor

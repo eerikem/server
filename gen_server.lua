@@ -11,13 +11,13 @@ function gen_server.call(Co, Request, Timeout)
   VM.send(Co,"sync",Request,VM.running(),Ref)
   while true do
     local Response = {VM.receive(Timeout)}
-    if table.maxn(Response) == 2 then 
+    if #Response == 2 then 
       local _Ref, Reply = unpack(Response)
       if Ref == _Ref then
         VM.demonitor(Ref)
         return Reply
       end
-    elseif table.maxn(Response) == 5 then
+    elseif #Response == 5 then
       local exit,_Ref,type,_Co,Reason = unpack(Response)
       if exit == "DOWN" and Ref == _Ref and type == "process" and Co == _Co then
         error(Reason,2)
@@ -35,7 +35,7 @@ end
 local function loop(Module,State)
   local Response = {VM.receive()}
   --TODO better pattern matching on messages!?!?!?!?!
-  if table.maxn(Response) > 1 or table.maxn(Response) < 5 then
+  if #Response > 1 or #Response < 5 then
     local Type, Msg, Co, Ref = unpack(Response) 
     if Type == "async" then
       return loop(Module,Module.handle_cast(Msg,State))
@@ -53,13 +53,13 @@ function gen_server.reply(From,Reply)
 end
 
 local function init(Module, ...)
-  return loop(Module,Module.init(unpack(arg)))
+  return loop(Module,Module.init(...))
 end
 
 
 function gen_server.start(Module, Args, Options, ServerName)
   local co = VM.spawn(function() return init(Module,unpack(Args)) end)
-  VM.registerName(ServerName,co)
+  if ServerName then VM.registerName(ServerName,co) end
   return co
 end
 
