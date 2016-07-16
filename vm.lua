@@ -420,8 +420,9 @@ function VM.resume(co,...)
   RUNNING = parent
   if RUNNING == ROOT then
     VM.resumes[ROOT] = VM.resumes[ROOT] + 1
-    return checkQueue()
+    checkQueue()
   end
+  return ok, e
 end
 
 --TODO Optimize looping search for ready Coroutines.
@@ -490,6 +491,7 @@ local function postYield(event,...)
   end
 end
 
+--TODO implement Timeout behaviour
 function VM.receive()
   if next(VM.mailbox[RUNNING]) then
     return postYield(unpack(table.remove(VM.mailbox[RUNNING],1)))

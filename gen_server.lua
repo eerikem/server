@@ -6,35 +6,36 @@ local luaunit = require 'luaunit'
 local gen_server = {}
 
 function gen_server.call(Co, Request, Timeout)
+  --if type(Request) ~= "table" then error("Request must be a list",2) end
   if not Timeout then Timeout = 5 end--TODO implement receive timeout behaviour
   local Ref = VM.monitor("process",Co)
   VM.send(Co,"sync",Request,VM.running(),Ref)
   while true do
     local Response = {VM.receive(Timeout)}
-    if #Response == 2 then 
-      local _Ref, Reply = unpack(Response)
+    --Response = {exit,_Ref,type,_Co,Reason}
+    if #Response == 5 and Response[1] == "DOWN" and Response[2] == Ref and Response[3] == "process" and Response[4] == Co then
+      error(Response[5],2)
+    elseif Response == nil then
+      error("Bad reply to: ".. luaunit.prettystr(Request,true) .."\ngen_server.call GOT: "..luaunit.prettystr(Response,true),2)
+    else
+      local _Ref = table.remove(Response,1)
       if Ref == _Ref then
         VM.demonitor(Ref)
-        return Reply
+        return unpack(Response)
       end
-    elseif #Response == 5 then
-      local exit,_Ref,type,_Co,Reason = unpack(Response)
-      if exit == "DOWN" and Ref == _Ref and type == "process" and Co == _Co then
-        error(Reason,2)
-      end
-    else
-      error("Bad reply to: ".. luaunit.prettystr(Request,true) .."\ngen_server.call GOT: "..luaunit.prettystr(Response,true),2)
     end
   end
 end
 
 function gen_server.cast(Co, Request)
+  --if type(Request) ~= "table" then error("Request must be a list",2) end
   return VM.send(Co,"async",Request)
 end
 
 local function loop(Module,State)
   local Response = {VM.receive()}
   --TODO better pattern matching on messages!?!?!?!?!
+  --TODO catch shutdown message?
   if #Response > 1 or #Response < 5 then
     local Type, Msg, Co, Ref = unpack(Response) 
     if Type == "async" then
@@ -46,10 +47,10 @@ local function loop(Module,State)
   return loop(Module,Module.handle_info(Response,State))
 end
 
-function gen_server.reply(From,Reply)
+function gen_server.reply(From,...)
   if type(From) ~= "table" then error("Bad From",2) end
   local co,Ref = unpack(From)
-  VM.send(co,Ref,Reply)
+  VM.send(co,Ref,...)
 end
 
 local function init(Module, ...)
@@ -59,14 +60,24 @@ end
 
 function gen_server.start(Module, Args, Options, ServerName)
   local co = VM.spawn(function() return init(Module,unpack(Args)) end)
-  if ServerName then VM.registerName(ServerName,co) end
-  return co
+  VM.log(VM.status(co))
+  if  VM.status(co) ~= "dead" then
+    if ServerName then
+      VM.registerName(ServerName,co) end
+    return co
+  else
+    return false, "Module.init failed"
+  end
 end
 
 function gen_server.start_link(Module, Args, Options, ServerName)
   local co =  VM.spawnlink(function() return init(Module,unpack(Args)) end)
-  if ServerName then VM.register(ServerName,co) end
-  return co
+  if VM.status(co) ~= "dead" then
+    if ServerName then VM.register(ServerName,co) end
+    return co
+  else
+    return false, "Module.init failed"
+  end
 end
 
 

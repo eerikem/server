@@ -66,13 +66,57 @@ function test_Module()
 end
 
 function test_start()
+  local ChildSpec = {"child",{Server,"start_link",{"fail"}},
+        "permanent",500,"worker",{Server}}
   Sup.init = function()
-    return {"ok",{{"one_for_one"},
-      {{"child",{Server,"start_link",{"fail"}},
-        "permanent",500,"worker",{Server}}}}} 
+    return {"ok",{{"one_for_one"},{ChildSpec}}} 
   end
   local co = supervisor.start_link(Sup,{})
   luaunit.assertEquals(supervisor.count_children(co),1)
+  local ok, response = unpack(supervisor.start_child(co,ChildSpec))
+  luaunit.assertFalse(ok)
+  ChildSpec[1]="child2"
+  ok, response = unpack(supervisor.start_child(co,ChildSpec))
+  luaunit.assertEquals(supervisor.count_children(co),2)
+end
+
+function test_restart()
+  local ChildSpec = {"child",{Server,"start_link",{"fail"}},
+    "permanent",500,"worker",{Server}}
+  Sup.init = function()
+    return {"ok",{{"one_for_one"},{ChildSpec}}}
+  end
+  local co = supervisor.start_link(Sup,{})
+  local child = supervisor.which_children(co)[1][2]
+  gen_server.cast(child,"die")
+  luaunit.assertEquals(supervisor.count_children(co),1)
+end
+
+function test_terminate_child()
+  local childId = "child"
+  local ChildSpec = {childId,{Server,"start_link",{"fail"}},
+    "permanent",500,"worker",{Server}}
+  Sup.init = function()
+    return {"ok",{{"one_for_one"},{ChildSpec}}}
+  end
+  local co = supervisor.start_link(Sup,{})
+  luaunit.assertEquals({supervisor.terminate_child(co,"not a child")},{false,"not found"})
+  luaunit.assertTrue(supervisor.terminate_child(co,childId))
+  luaunit.assertEquals(supervisor.count_children(co),0)
+end
+
+function test_fail_child_init()
+  local Server = {init=function() error("Failed init") end }
+  function Server.start_link(Type)
+    return gen_server.start_link(Server,{Type},{},{}) end
+  
+  local ChildSpec = {"child",{Server,"start_link",{"fail"}},
+    "permanent",500,"worker",{Server}}
+  Sup.init = function()
+    return {"ok",{{"one_for_one"},{ChildSpec}}}
+  end
+  
+  luaunit.assertErrorMsgEquals("Failed init",supervisor.start_link,Sup,{})
 end
 
 os.exit(luaunit.LuaUnit.run())
