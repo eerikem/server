@@ -13,7 +13,7 @@ end
 
 function Server.init(Type)
   if Type =="fail" then
-    return {type = Type}
+    return true, {type = Type}
   else
     error("type is: "..Type)
     error("bad server type",2)
@@ -57,7 +57,7 @@ function setup_each()
 end
 
 function test_Module()
-  local Co = Server.start_link("fail")
+  local ok, Co = Server.start_link("fail")
   luaunit.assertTrue(VM.coroutines[Co])
   luaunit.assertEquals(gen_server.call(Co,"ok?"),"ok")
   luaunit.assertError(gen_server.cast,Co,{"gonna die?"})
@@ -69,14 +69,14 @@ function test_start()
   local ChildSpec = {"child",{Server,"start_link",{"fail"}},
         "permanent",500,"worker",{Server}}
   Sup.init = function()
-    return {"ok",{{"one_for_one"},{ChildSpec}}} 
+    return true,{{"one_for_one"},{ChildSpec}} 
   end
-  local co = supervisor.start_link(Sup,{})
+  local ok, co = supervisor.start_link(Sup,{})
   luaunit.assertEquals(supervisor.count_children(co),1)
   local ok, response = unpack(supervisor.start_child(co,ChildSpec))
   luaunit.assertFalse(ok)
   ChildSpec[1]="child2"
-  ok, response = unpack(supervisor.start_child(co,ChildSpec))
+  ok, response = supervisor.start_child(co,ChildSpec)
   luaunit.assertEquals(supervisor.count_children(co),2)
 end
 
@@ -84,9 +84,9 @@ function test_restart()
   local ChildSpec = {"child",{Server,"start_link",{"fail"}},
     "permanent",500,"worker",{Server}}
   Sup.init = function()
-    return {"ok",{{"one_for_one"},{ChildSpec}}}
+    return true,{{"one_for_one"},{ChildSpec}}
   end
-  local co = supervisor.start_link(Sup,{})
+  local ok, co = supervisor.start_link(Sup,{})
   local child = supervisor.which_children(co)[1][2]
   gen_server.cast(child,"die")
   luaunit.assertEquals(supervisor.count_children(co),1)
@@ -97,9 +97,9 @@ function test_terminate_child()
   local ChildSpec = {childId,{Server,"start_link",{"fail"}},
     "permanent",500,"worker",{Server}}
   Sup.init = function()
-    return {"ok",{{"one_for_one"},{ChildSpec}}}
+    return true, {{"one_for_one"},{ChildSpec}}
   end
-  local co = supervisor.start_link(Sup,{})
+  local ok, co = supervisor.start_link(Sup,{})
   luaunit.assertEquals({supervisor.terminate_child(co,"not a child")},{false,"not found"})
   luaunit.assertTrue(supervisor.terminate_child(co,childId))
   luaunit.assertEquals(supervisor.count_children(co),0)
@@ -113,10 +113,10 @@ function test_fail_child_init()
   local ChildSpec = {"child",{Server,"start_link",{"fail"}},
     "permanent",500,"worker",{Server}}
   Sup.init = function()
-    return {"ok",{{"one_for_one"},{ChildSpec}}}
+    return true, {{"one_for_one"},{ChildSpec}}
   end
   
-  luaunit.assertErrorMsgEquals("Failed init",supervisor.start_link,Sup,{})
+  luaunit.assertEquals(supervisor.start_link(Sup,{}),{false,"Failed init"})
 end
 
 os.exit(luaunit.LuaUnit.run())

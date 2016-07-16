@@ -9,8 +9,8 @@ local luaunit = require 'luaunit'
 sup_flags = {stategy = "one_for_one",
   intensity = 1, period = 5}
 
---init returns {ok, {{RestartStrategy, MaxRestart, MaxTime},[ChildSpec]}}
-
+--init returns: true, {{RestartStrategy, MaxRestart, MaxTime},[ChildSpec]}
+--             |false, Reason
 --Childspec: {ChildId, StartFunc, Restart, Shutdown, Type, Modules}
   --ChildId: Name of child for debugging(internal to supervisor)
   --StartFunc: what function to start the child eg: start_link
@@ -20,36 +20,6 @@ sup_flags = {stategy = "one_for_one",
   --Shutdown: infinity|brutal_kill|Timeout in ms
   --Type: supervisor|worker
   --Modules: the Module or 'dynamic' for unkown cases such as eventHandlers
-  
-local function startChild(ChildSpec,State)
-    local ChildId, StartFunc,Restart,Shutdown,Type,Modules = unpack(ChildSpec)
-    local Mod, Start, Args = unpack(StartFunc)
-    local co = VM.exec(Mod,Start,unpack(Args))
-    table.insert(State.children,co)
-    State.childIds[ChildId]=co
-    State.childSpecs[co]=ChildSpec
-    return co
-end  
-
-function Supervisor.start_link(Module, Args, SupName)
-  return gen_server.start_link(Supervisor,{Module,Args},nil,SupName)
-end
-
-function Supervisor.count_children(SupRef)
-  return gen_server.call(SupRef,{"count"})
-end
-
-function Supervisor.which_children(SupRef)
-  return gen_server.call(SupRef,"which_children")
-end
-
-function Supervisor.start_child(SupRef,ChildSpec)
-  return gen_server.call(SupRef,{"start_child",ChildSpec})
-end
-
-function Supervisor.terminate_child(SupRef,Child)
-  return gen_server.call(SupRef,{"terminate_child",Child})
-end
 
 local function resolve(Child,State)
   if type(Child)=="thread"then
@@ -80,12 +50,6 @@ local function removeChild(Child,State)
   end
   State.childIds[State.childSpecs[Child][1]]=nil
   State.childSpecs[Child]=nil
-end
-
-local function restartChild(Child,State)
-  local ChildSpec = State.childSpecs[Child]
-  removeChild(Child,State)
-  startChild(ChildSpec,State)
 end
 
 local function terminateChild(Child,State)
@@ -121,26 +85,68 @@ local function terminateChildren(State)
   end
 end
 
+local function startChild(ChildSpec,State)
+    local ChildId, StartFunc,Restart,Shutdown,Type,Modules = unpack(ChildSpec)
+    local Mod, Start, Args = unpack(StartFunc)
+    local ok, co = VM.exec(Mod,Start,unpack(Args))
+    if ok then
+      table.insert(State.children,co)
+      State.childIds[ChildId]=co
+      State.childSpecs[co]=ChildSpec
+      return ok, co
+    else
+      terminateChildren(State)
+      return false, {"shutdown",co}
+    end
+end
+
+
+local function restartChild(Child,State)
+  local ChildSpec = State.childSpecs[Child]
+  removeChild(Child,State)
+  startChild(ChildSpec,State)
+end
+
+function Supervisor.start_link(Module, Args, SupName)
+  local ok, co = gen_server.start_link(Supervisor,{Module,Args},nil,SupName)
+  return ok, co
+end
+
+function Supervisor.count_children(SupRef)
+  return gen_server.call(SupRef,{"count"})
+end
+
+function Supervisor.which_children(SupRef)
+  return gen_server.call(SupRef,"which_children")
+end
+
+function Supervisor.start_child(SupRef,ChildSpec)
+  return gen_server.call(SupRef,{"start_child",ChildSpec})
+end
+
+function Supervisor.terminate_child(SupRef,Child)
+  return gen_server.call(SupRef,{"terminate_child",Child})
+end
+
 -------
 --OTP--
 -------
 
 function Supervisor.init(Module,Args)
-  --{ok,{Restart,Childspecs}}
-  local Spec = Module.init(unpack(Args))
-  if Spec[1] == "ok" then
+  --ok,{Restart,Childspecs}
+  local ok, Spec = Module.init(unpack(Args))
+  if ok then
     VM.process_flag("trap_exit",true)
-    local State = {supervisor = true,spec=Spec[2][1],children={},childIds={},childSpecs={},terminate=false}
-    for _,ChildSpec in ipairs(Spec[2][2]) do
-      local ok = startChild(ChildSpec,State)
+    local State = {supervisor = true,spec=Spec[1],children={},childIds={},childSpecs={}}
+    for _,ChildSpec in ipairs(Spec[2]) do
+      local ok, reason = startChild(ChildSpec,State)
       if not ok then
         terminateChildren(State)
-        State.terminate = true
       end
     end
-    return State
+    return true, State
   else
-    error("bad spec")
+    return false, "bad spec"
   end
 end
 

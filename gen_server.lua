@@ -54,30 +54,36 @@ function gen_server.reply(From,...)
 end
 
 local function init(Module, ...)
-  return loop(Module,Module.init(...))
+  local ok, State = Module.init(...)
+  if not ok then error(luaunit.prettystr(State,true)) end
+  return loop(Module,State)
 end
 
+local function startServer(co,ServerName)
+  local ok, reason = VM.resume(co)
+  if VM.status(co) ~= "dead" and ServerName then
+    if VM.registered(ServerName) then
+      return false, {"alreadyRegistered",VM.coroutines[ServerName]}
+    else
+      VM.register(ServerName,co)
+    end
+  end
+  if ok then
+    return true, co
+  else
+    return false, reason
+  end
+end
 
 function gen_server.start(Module, Args, Options, ServerName)
-  local co = VM.spawn(function() return init(Module,unpack(Args)) end)
-  VM.log(VM.status(co))
-  if  VM.status(co) ~= "dead" then
-    if ServerName then
-      VM.registerName(ServerName,co) end
-    return co
-  else
-    return false, "Module.init failed"
-  end
+  local co = VM.queue(function() return init(Module,unpack(Args)) end)
+  return startServer(co,ServerName)
 end
 
+
 function gen_server.start_link(Module, Args, Options, ServerName)
-  local co =  VM.spawnlink(function() return init(Module,unpack(Args)) end)
-  if VM.status(co) ~= "dead" then
-    if ServerName then VM.register(ServerName,co) end
-    return co
-  else
-    return false, "Module.init failed"
-  end
+  local co =  VM.queueLink(function() return init(Module,unpack(Args)) end)
+  return startServer(co,ServerName)
 end
 
 

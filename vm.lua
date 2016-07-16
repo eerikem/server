@@ -339,6 +339,28 @@ local function init(fun)
   return co
 end
 
+--Initialize coroutine but don't execute initial resume
+function VM.queue(fun)
+  return init(fun)
+end
+
+--Initialize and link coroutine but don't execute initial resume
+function VM.queueLink(fun)
+  local co = init(fun)
+  VM.link(co)
+  return co
+end
+
+local function catchInitFail(co)
+  local ok, reason = VM.resume(co)
+  if not ok then
+    error(reason)
+  else
+    return co
+  end
+end
+
+--TODO queue resumes in spawn function for VM to run just before yielding to ROOT 
 function VM.spawn(fun)
   if not ("function" == type(fun)) then error("badarg: Not a function",2) end
   local co = init(fun)

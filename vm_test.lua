@@ -225,16 +225,35 @@ function test_demonitor()
   luaunit.assertEquals(r,{})
 end
 
-function test_gen_server()
+function test_handle_call()
   local server = {}
   function server.start_link() return gen_server.start_link(server,{},{}) end
-  function server.init() return {} end
+  function server.init() return true, {} end
   function server.handle_call(Req,From,State)
     gen_server.reply(From,"ok")
     return State
   end
-  local co = server.start_link()
+  local ok, co = server.start_link()
   luaunit.assertEquals(gen_server.call(co,"hello"),"ok")
+end
+
+function test_gen_server_fail_init()
+  local msg = "failed init"
+  local Server = {}
+  function Server.start_link() return gen_server.start(Server,{},{}) end
+  function Server.init() error(msg) end
+  local ok, reason = Server.start_link()
+  luaunit.assertFalse(ok)
+  luaunit.assertStrIContains(reason,msg)
+end
+
+function test_gen_server_start()
+  local name = "server"
+  local Server = {}
+  function Server.start_link() return gen_server.start_link(Server,{},{},name) end
+  function Server.init() return true, {} end
+  local _, co = Server.start_link()
+  luaunit.assertEquals({Server.start_link()},{false,{"alreadyRegistered",co}})
 end
 
 function test_exec()
