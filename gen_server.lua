@@ -54,8 +54,9 @@ function gen_server.reply(From,...)
 end
 
 local function init(Module, ...)
+  if not Module.init then error("Module.init required by gen_server",3) end
   local ok, State = Module.init(...)
-  if not ok then error(luaunit.prettystr(State,true)) end
+  if ok ~= true then error("init returned bad state: "..luaunit.prettystr(State,true),2) end
   return loop(Module,State)
 end
 

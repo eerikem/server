@@ -60,7 +60,7 @@ end
 
 function VM.status(co)
   if VM.dead[co] then return "dead" end
-  if not VM.coroutines[co] then error("badarg: Coroutine "..co.." does not exist",2) end
+  if not VM.coroutines[co] then error("badarg: Coroutine "..tostring(co).." does not exist",2) end
   return coroutine.status(VM.coroutines[co])
 end
 
@@ -404,7 +404,7 @@ local function checkQueue()
   queue = {}
 end
 
-
+--exit("normal"|reason,[co])
 function VM.exit(reason,co)
   if not co then
     removeCo(RUNNING)

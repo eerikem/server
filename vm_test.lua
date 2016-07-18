@@ -256,6 +256,36 @@ function test_gen_server_start()
   luaunit.assertEquals({Server.start_link()},{false,{"alreadyRegistered",co}})
 end
 
+function test_gen_server_shutdown()
+  local executed = false
+  local Server = {}
+  function Server.init() return true, {} end
+  function Server.start() local _,co = gen_server.start_link(Server,{},{}) return co end
+  function Server.terminate(reason) executed = reason end
+  function Server.handleInfo(Req,State)
+    if Req[1] == "stop" then
+      return "stop",Req[2],State
+    end
+    return "noreply", State
+  end
+  local co = Server.start()
+  VM.exit("normal",co)
+  luaunit.assertEquals(executed,"normal")
+  executed = false
+  co = Server.start()
+  VM.send(co,"hello")
+  luaunit.assertFalse(executed)
+  VM.send("stop")
+  luaunit.assertEquals(executed,"normal")
+  executed = false
+  co = Server.start()
+  gen_server.stop(co)
+  luaunit.assertEquals(executed,"normal")
+  co = Server.start()
+  gen_server.stop(co,"abnormal")
+  luaunit.assertEquals(executed,"abnormal")
+end
+
 function test_exec()
   local Mod = {}
   function Mod.fun(x) return x end

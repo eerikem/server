@@ -105,7 +105,15 @@ function test_terminate_child()
   luaunit.assertEquals(supervisor.count_children(co),0)
 end
 
-function test_fail_child_init()
+function test_timed_termination()
+
+end
+
+function test_termination_order()
+
+end
+
+function test_child_fail_init()
   local Server = {init=function() error("Failed init") end }
   function Server.start_link(Type)
     return gen_server.start_link(Server,{Type},{},{}) end

@@ -6,8 +6,8 @@ local luaunit = require 'luaunit'
 --one_for_all = for dependent workers
 --rest for one = chain of dependencies
 --simple_one_for_one = one kind of child only..?
-sup_flags = {stategy = "one_for_one",
-  intensity = 1, period = 5}
+local sup_flags = {strategy = "one_for_one",intensity = 1,period = 5}
+local child_flags = {restart = "permanent",shutdown = 500,type = "worker"}
 
 --init returns: true, {{RestartStrategy, MaxRestart, MaxTime},[ChildSpec]}
 --             |false, Reason
@@ -21,6 +21,7 @@ sup_flags = {stategy = "one_for_one",
   --Type: supervisor|worker
   --Modules: the Module or 'dynamic' for unkown cases such as eventHandlers
 
+--Resolves ChildID to thread or nil if not found.
 local function resolve(Child,State)
   if type(Child)=="thread"then
     return Child
@@ -85,6 +86,19 @@ local function terminateChildren(State)
   end
 end
 
+local function initChildSpec(ChildSpec)
+  ChildSpec[3] = ChildSpec[3] or child_flags.restart
+  ChildSpec[4] = ChildSpec[4] or child_flags.shutdown
+  ChildSpec[5] = ChildSpec[5] or child_flags.type
+  if not ChildSpec[6] then ChildSpec[6]={ChildSpec[2][1]} end
+end
+
+local function initSupSpec(State)
+  State.spec.strategy = State.spec[1] or sup_flags.strategy
+  State.spec.intensity = State.spec[2] or sup_flags.intensity
+  State.spec.intensity = State.spec[3] or sup_flags.period
+end
+
 local function startChild(ChildSpec,State)
     local ChildId, StartFunc,Restart,Shutdown,Type,Modules = unpack(ChildSpec)
     local Mod, Start, Args = unpack(StartFunc)
@@ -92,6 +106,7 @@ local function startChild(ChildSpec,State)
     if ok then
       table.insert(State.children,co)
       State.childIds[ChildId]=co
+      initChildSpec(ChildSpec)
       State.childSpecs[co]=ChildSpec
       return ok, co
     else
@@ -138,6 +153,7 @@ function Supervisor.init(Module,Args)
   if ok then
     VM.process_flag("trap_exit",true)
     local State = {supervisor = true,spec=Spec[1],children={},childIds={},childSpecs={}}
+    initSupSpec(State)
     for _,ChildSpec in ipairs(Spec[2]) do
       local ok, reason = startChild(ChildSpec,State)
       if not ok then
@@ -178,26 +194,36 @@ function Supervisor.handle_cast(Request,State)
   return State
 end
 
-local function handleExit(Child,State)
+local function handleChildExit(Child,State)
   if State.spec.strategy == "one_for_one" then
-    local Restart = State.childSpecs[Child][5]
-    if Restart == "permanent" then
+    local Restart = State.childSpecs[Child][3]
+    if Restart == "permanent" or nil then
+      VM.log("Restarting permanent child")
       restartChild(Child,State)
     elseif Restart == "temporary" then
+      VM.log("Killing temporary child")
       
     elseif Restart == "transient" then
+      VM.log("Restarting transient child?")
       
     else
-      error("Bad child Restart strategy: ",Restart)
+      error("Bad child Restart strategy: "..Restart)
     end
+  else
+    VM.log("Unsupported strategy"..State.spec.strategy)
   end
 end
 
 function Supervisor.handle_info(Request,State)
   local event = Request[1]
   if event == "EXIT" then
-    local _,Child,Reason = unpack(Request)
-    handleExit(Child,State)
+    local _,Co,Reason = unpack(Request)
+    if State.childSpecs[Co] then
+      handleChildExit(Co,State)
+    else
+      --TODO Handle linked children who fail during init
+      VM.log("supervisor got EXIT from "..tostring(Co))
+    end
   end
   return State
 end
