@@ -1,7 +1,7 @@
 local gen_server = require 'gen_server'
 local Supervisor = {}
 local luaunit = require 'luaunit'
-
+local queue = require 'queue'
 --one_for_one = one dies, one restarted
 --one_for_all = for dependent workers
 --rest for one = chain of dependencies
@@ -49,6 +49,7 @@ local function removeChild(Child,State)
       break
     end
   end
+  State.restarts[Child]=nil
   State.childIds[State.childSpecs[Child][1]]=nil
   State.childSpecs[Child]=nil
 end
@@ -96,7 +97,7 @@ end
 local function initSupSpec(State)
   State.spec.strategy = State.spec[1] or sup_flags.strategy
   State.spec.intensity = State.spec[2] or sup_flags.intensity
-  State.spec.intensity = State.spec[3] or sup_flags.period
+  State.spec.period = State.spec[3] or sup_flags.period
 end
 
 local function startChild(ChildSpec,State)
@@ -107,6 +108,7 @@ local function startChild(ChildSpec,State)
       table.insert(State.children,co)
       State.childIds[ChildId]=co
       initChildSpec(ChildSpec)
+      State.restarts[co]=queue.new()
       State.childSpecs[co]=ChildSpec
       return ok, co
     else
@@ -118,8 +120,37 @@ end
 
 local function restartChild(Child,State)
   local ChildSpec = State.childSpecs[Child]
+  local Q = State.restarts[Child]
   removeChild(Child,State)
-  startChild(ChildSpec,State)
+  local time = os.time()
+  local ok, co
+  if not queue.first(Q) then
+    queue.push(Q,time)
+    local ok, co = startChild(ChildSpec,State)
+    if ok then State.restarts[co]=Q end
+  else
+    while queue.first(Q) do
+      local restarts = queue.size(Q)
+      if math.abs(queue.first(Q) - time) > State.spec.period then
+        queue.pop(Q)
+        if queue.size(Q) == 0 then
+          local ok, co = startChild(ChildSpec,State)
+          queue.push(Q,time)
+          if ok then State.restarts[co]=Q end
+          break
+        end
+      else
+        if restarts > State.spec.intensity - 1 then
+          return VM.log("Child exceeded restart policy.")
+        else
+          queue.push(Q,time)
+          local ok, co = startChild(ChildSpec,State)
+          if ok then State.restarts[co]=Q end
+          break
+        end
+      end
+    end
+  end
 end
 
 function Supervisor.start_link(Module, Args, SupName)
@@ -152,7 +183,7 @@ function Supervisor.init(Module,Args)
   local ok, Spec = Module.init(unpack(Args))
   if ok then
     VM.process_flag("trap_exit",true)
-    local State = {supervisor = true,spec=Spec[1],children={},childIds={},childSpecs={}}
+    local State = {supervisor = true,spec=Spec[1],children={},childIds={},childSpecs={},restarts={}}
     initSupSpec(State)
     for _,ChildSpec in ipairs(Spec[2]) do
       local ok, reason = startChild(ChildSpec,State)

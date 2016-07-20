@@ -90,6 +90,10 @@ function test_restart()
   local child = supervisor.which_children(co)[1][2]
   gen_server.cast(child,"die")
   luaunit.assertEquals(supervisor.count_children(co),1)
+  local children = supervisor.which_children(co)
+  child = children[1][2]
+  gen_server.cast(child,"die")
+  luaunit.assertEquals(supervisor.count_children(co),0)
 end
 
 function test_terminate_child()
