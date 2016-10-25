@@ -262,20 +262,20 @@ function test_gen_server_shutdown()
   function Server.init() return true, {} end
   function Server.start() local _,co = gen_server.start_link(Server,{},{}) return co end
   function Server.terminate(reason) executed = reason end
-  function Server.handleInfo(Req,State)
+  function Server.handle_info(Req,State)
     if Req[1] == "stop" then
-      return "stop",Req[2],State
+      return "stop","normal",State
     end
     return "noreply", State
   end
   local co = Server.start()
   VM.exit("normal",co)
-  luaunit.assertEquals(executed,"normal")
+  luaunit.assertEquals(executed,false)
   executed = false
   co = Server.start()
   VM.send(co,"hello")
   luaunit.assertFalse(executed)
-  VM.send("stop")
+  VM.send(co,"stop")
   luaunit.assertEquals(executed,"normal")
   executed = false
   co = Server.start()
@@ -284,6 +284,21 @@ function test_gen_server_shutdown()
   co = Server.start()
   gen_server.stop(co,"abnormal")
   luaunit.assertEquals(executed,"abnormal")
+end
+
+function test_gen_server_exit_normal()
+  local executed = false
+  local Server = {}
+  function Server.init() return true, {} end
+  function Server.start() local _,co = gen_server.start_link(Server,{},{}) return co end
+  function Server.terminate(reason,State) executed = reason end
+  function Server.handle_cast(Request,State)
+    VM.exit("normal")
+    return State
+  end
+  local co = Server.start()
+  gen_server.cast(co,{"a req"})
+  luaunit.assertEquals(executed,false)
 end
 
 function test_exec()

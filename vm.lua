@@ -295,18 +295,24 @@ local function removeCo(co)
   VM.parents[co]=nil
 end
 
-receivedExit = function (co,msg)
-  if VM.co2flags[RUNNING].trap_exit and msg ~= 'kill' then
-    return 'EXIT',co,msg
-  elseif msg == "normal" then
-    return VM.receive()
-  else
-    if msg == "kill" then msg = "killed" end
+local function terminateRunning(co,msg)
     removeCo(RUNNING)
     propogateExit('EXIT',RUNNING,msg)
     notifyMonitors(RUNNING,msg)
     --yield from the now dead process to stop execution
     return coroutine.yield()
+end
+
+receivedExit = function (co,msg)
+  if msg == "kill" then
+    msg = "killed"
+    return terminateRunning(co,msg)
+  elseif VM.co2flags[RUNNING].trap_exit then
+    return 'EXIT',co,msg
+  elseif msg == "normal" then
+    return VM.receive()
+  else
+    return terminateRunning(co,msg)
   end
 end
 
@@ -410,8 +416,6 @@ function VM.exit(reason,co)
     removeCo(RUNNING)
     propogateExit('EXIT',RUNNING,reason)
     return notifyMonitors(RUNNING,reason)
-  elseif reason == "normal" and not co == VM.running() then
-    return
   elseif co == ROOT then
     queueExit('EXIT',co,reason)
     return checkQueue()
@@ -515,6 +519,8 @@ end
 
 --TODO implement Timeout behaviour
 function VM.receive()
+  if not VM.mailbox[RUNNING] then
+    error("Calling receive in dead coroutine: "..tostring(RUNNING),2) end
   if next(VM.mailbox[RUNNING]) then
     return postYield(unpack(table.remove(VM.mailbox[RUNNING],1)))
   end
