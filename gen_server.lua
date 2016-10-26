@@ -3,6 +3,12 @@ local luaunit = require 'luaunit'
 --Warning uncommenting creates new VM instance in CC
 --TODO fix Require to not overwrite this?!?
 
+local errorSound = "/playsound frontierdevelopment:event.mondecline @p"
+
+local function beep()
+  exec(errorSound)
+end
+
 local gen_server = {}
 
 function gen_server.call(Co, Request, Timeout)
@@ -12,7 +18,7 @@ function gen_server.call(Co, Request, Timeout)
   VM.send(Co,"sync",Request,VM.running(),Ref)
   while true do
     local Response = {VM.receive(Timeout)}
-    --Response = {exit,_Ref,type,_Co,Reason}
+        --Response = {exit,_Ref,type,_Co,Reason}
     if unpack(Response) == nil then error("Gen_server.call received nil response.")
     elseif #Response == 5 and Response[1] == "DOWN" and Response[2] == Ref and Response[3] == "process" and Response[4] == Co then
       error(Response[5],2)
@@ -23,6 +29,8 @@ function gen_server.call(Co, Request, Timeout)
       if Ref == _Ref then
         VM.demonitor(Ref)
         return unpack(Response)
+      else
+        --TODO something other then silently fail here?!
       end
     end
   end
@@ -78,6 +86,7 @@ local function callHandleInfo(Module, Response,State)
 end
 
 loop = function(Module,State)
+  if VM.dead[VM.running()] then error("here",2) end
   local Response = {VM.receive()}
   --TODO better pattern matching on messages!?!?!?!?!
   if Response[1] == "EXIT" then

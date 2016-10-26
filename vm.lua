@@ -415,7 +415,8 @@ function VM.exit(reason,co)
   if not co then
     removeCo(RUNNING)
     propogateExit('EXIT',RUNNING,reason)
-    return notifyMonitors(RUNNING,reason)
+    notifyMonitors(RUNNING,reason)
+    return coroutine.yield()
   elseif co == ROOT then
     queueExit('EXIT',co,reason)
     return checkQueue()
@@ -436,7 +437,7 @@ function VM.resume(co,...)
   local ok, e = coroutine.resume(thread,...)
   dec()
   if not ok then
-    VM.log("Coroutine died, returning to parent")
+    VM.log(tostring(co).." died, returning to parent: "..tostring(parent))
     catchError(e)
   elseif coroutine.status(thread)=="dead" then
     removeCo(RUNNING)
