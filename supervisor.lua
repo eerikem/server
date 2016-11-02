@@ -1,7 +1,7 @@
 local gen_server = require 'gen_server'
 local Supervisor = {}
-local luaunit = require 'luaunit'
-local queue = require 'queue'
+local luaunit = require 'lib.luaunit'
+local queue = require 'lib.queue'
 --one_for_one = one dies, one restarted
 --one_for_all = for dependent workers
 --rest for one = chain of dependencies

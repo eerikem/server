@@ -1,5 +1,5 @@
 --local VM = require 'vm'
-local luaunit = require 'luaunit'
+local luaunit = require 'lib.luaunit'
 --Warning uncommenting creates new VM instance in CC
 --TODO fix Require to not overwrite this?!?
 
