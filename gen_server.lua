@@ -30,7 +30,7 @@ function gen_server.call(Co, Request, Timeout)
         VM.demonitor(Ref)
         return unpack(Response)
       else
-        --TODO something other then silently fail here?!
+        VM.log("gen_server.call got incorrect response")
       end
     end
   end
@@ -91,16 +91,17 @@ loop = function(Module,State)
   --TODO better pattern matching on messages!?!?!?!?!
   if Response[1] == "EXIT" then
     local _,co,Reason = unpack(Response)
-    --TODO if normal and trapping exits then callHandleInfo
-    if Reason == "normal" then
+    --TODO verify these conditions for callHandleInfo
+    if Reason == "normal" or VM.co2flags[VM.running()].trap_exit then
       return callHandleInfo(Module,Response,State)
     else
       return callTerminate(Module,Reason,State)
     end
   elseif Response[1] == "gen_server_stop" then
     return callTerminate(Module,Response[2],State)
+  elseif Response[1] == "shutdown" then --TODO correct way to handle shutdown?!?
+    return callTerminate(Module,"shutdown",State)
   end
-  --TODO catch shutdown message?
   local Type, Msg, Co, Ref = unpack(Response) 
   if Type == "async" then
     return loop(Module,Module.handle_cast(Msg,State))
@@ -120,20 +121,24 @@ end
 local function init(Module, ...)
   if not Module.init then error("Module.init required by gen_server",3) end
   local ok, State = Module.init(...)
-  if ok ~= true then error("init returned bad state: "..luaunit.prettystr(State,true),2) end  
+  if ok ~= true and State then
+    error(luaunit.prettystr(State,true),0)
+  elseif State == nil then
+    error("init return nil State.",0)
+  end
   VM.process_flag("trap_exit",true)
   return loop(Module,State)
 end
 
 local function startServer(co,ServerName)
-  local ok, reason = VM.resume(co)
-  if VM.status(co) ~= "dead" and ServerName then
+  if ServerName then
     if VM.registered(ServerName) then
       return false, {"alreadyRegistered",VM.coroutines[ServerName]}
     else
       VM.register(ServerName,co)
     end
   end
+  local ok, reason = VM.resume(co)
   if ok then
     return true, co
   else

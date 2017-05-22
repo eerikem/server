@@ -37,6 +37,9 @@ function Server.handle_info(Event,State)
   return State
 end
 
+function Server.terminate(Reason,State)
+  print("Terminating with reason: "..Reason)
+end
 -------------------
 --Test Supervisor--
 -------------------
@@ -117,10 +120,24 @@ function test_termination_order()
 
 end
 
+function test_supervisor_stop()
+  local childId = "child"
+  local ChildSpec = {childId,{Server,"start_link",{"fail"}},
+    "permanent",500,"worker",{Server}}
+  Sup.init = function()
+    return true, {{"one_for_one"},{ChildSpec}}
+  end
+  local ok, co = supervisor.start_link(Sup,{})
+  print("Terminating Supervisor")
+  gen_server.stop(co,"shutdown")
+end
+
 function test_child_fail_init()
-  local Server = {init=function() error("Failed init") end }
+  local Server = {init=function()
+                    error("Failed init",0)
+                    end }
   function Server.start_link(Type)
-    return gen_server.start_link(Server,{Type},{},{}) end
+    return gen_server.start_link(Server,{Type},{}) end
   
   local ChildSpec = {"child",{Server,"start_link",{"fail"}},
     "permanent",500,"worker",{Server}}
@@ -128,7 +145,8 @@ function test_child_fail_init()
     return true, {{"one_for_one"},{ChildSpec}}
   end
   
-  luaunit.assertEquals(supervisor.start_link(Sup,{}),{false,"Failed init"})
+--  luaunit.assertEquals({supervisor.start_link(Sup,{})},{false, {"shutdown", "Failed init"}})
+  luaunit.assertErrorMsgContains('{"shutdown", "Failed init"}',supervisor.start_link,Sup,{})
 end
 
 os.exit(luaunit.LuaUnit.run())

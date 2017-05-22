@@ -80,6 +80,17 @@ local function terminateChild(Child,State)
   return true
 end
 
+local function shutdownChild(Child,State)
+  gen_server.stop(Child,"shutdown")
+end
+
+function Supervisor.terminate(Reason,State)
+  while #State.children > 0 do
+    local Child = table.remove(State.children,#State.children)
+    shutdownChild(Child,State)
+  end
+end
+
 local function terminateChildren(State)
   while #State.children > 0 do
     local Child = table.remove(State.children,#State.children)
@@ -189,6 +200,7 @@ function Supervisor.init(Module,Args)
       local ok, reason = startChild(ChildSpec,State)
       if not ok then
         terminateChildren(State)
+        return false, reason
       end
     end
     return true, State

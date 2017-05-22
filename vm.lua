@@ -6,6 +6,7 @@ local ROOT = "ROOT"
 local RUNNING = ROOT
 local queue = {}
 local STACK_DEPTH = 0
+local MAX_DEPTH = 10
 local ROTATOR = 1
 
 function VM.init()
@@ -49,7 +50,7 @@ end
 
 local function inc()
   STACK_DEPTH = STACK_DEPTH + 1
-  if STACK_DEPTH > 8 then
+  if STACK_DEPTH > MAX_DEPTH then
     --VM.log("Warning: Stack Depth reached "..STACK_DEPTH) end
     error("Stack Depth exceeded "..STACK_DEPTH) end
 end
@@ -130,7 +131,7 @@ end
 VM.ref = ref
 
 function VM.monitor(Type,obj)
-  if not type(Type) == "string" or not obj then error("badarg,2") end
+  if not type(Type) == "string" or not obj then error("badarg: "..luaunit.prettystr(obj,true),2) end
   if Type == "process" then
     local ref = ref()
     VM.monitors[ref]={target = obj, watching = VM.running()}
