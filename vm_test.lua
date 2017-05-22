@@ -301,6 +301,29 @@ function test_gen_server_exit_normal()
   luaunit.assertEquals(executed,false)
 end
 
+function test_gen_server_init()
+  local aChild = nil
+  local child = nil
+  local Child = {}
+  local Server = {}
+--  function Server.subscribe(Co) gen_server.cast(Co,{VM.running()}) end
+  function Server.subscribe() gen_server.cast("server",{VM.running()}) end
+  function Server.handle_cast(Request,State)
+    child = Request[1]
+  end
+  function Child.init(Co) 
+    Server.subscribe(Co)
+    return true,{}
+  end
+  function Server.init()
+--    _, aChild = gen_server.start(Child,{VM.running()},{})
+    _, aChild = gen_server.start(Child,{},{})
+    return true,{}
+  end
+  gen_server.start(Server,{},{},"server")
+  luaunit.assertEquals(aChild,child)
+end
+
 function test_exec()
   local Mod = {}
   function Mod.fun(x) return x end
