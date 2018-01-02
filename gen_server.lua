@@ -13,6 +13,7 @@ local gen_server = {}
 
 function gen_server.call(Co, Request, Timeout)
   --if type(Request) ~= "table" then error("Request must be a list",2) end
+  if Co == nil or Request == nil then error("Badarg",2) end
   if not Timeout then Timeout = 5 end--TODO implement receive timeout behaviour
   local Ref = VM.monitor("process",Co)
   VM.send(Co,"sync",Request,VM.running(),Ref)
