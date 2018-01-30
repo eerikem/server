@@ -127,7 +127,6 @@ local function init(Module, ...)
   elseif State == nil then
     error("init return nil State.",0)
   end
-  VM.process_flag("trap_exit",true)
   return loop(Module,State)
 end
 
