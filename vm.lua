@@ -411,7 +411,10 @@ local function checkQueue()
   queue = {}
 end
 
---exit("normal"|reason,[co])
+---
+-- Terminate a thread with a given reason that will be propogated to any listening monitors.
+-- @param #string reason "normal" if termination is expected, anything else otherwise.
+-- @param #thread co Optionally specify a coroutine to terminate. Stops the running thread if omitted.
 function VM.exit(reason,co)
   if not co then
     removeCo(RUNNING)
