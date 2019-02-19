@@ -499,7 +499,7 @@ function VM.send(co,...)
     else
       co = VM.coroutines[co]
     end
-  elseif not (type(co) == "thread") then error("badarg: "..type(co),2)
+  elseif not (type(co) == "thread") then error("VM.send got badarg for co: "..type(co),2)
   elseif not arg then error("badarg: cannot send nil",3) end
   if VM.coroutines[co] then
     HashArrayInsert(VM.mailbox,co,arg)

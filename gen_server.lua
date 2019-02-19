@@ -9,8 +9,51 @@ local function beep()
   exec(errorSound)
 end
 
+---
+-- The generic server object
+-- gen_server expects a child module to have all three handler functions defined
+-- @type [parent=#gen_server] server
+
+---
+-- Initialize the server state
+-- This function is required to imlpement a gen_server
+-- @function [parent = #server] init
+-- @return #boolean ok
+-- @return State
+
+---
+-- Handles asynchronous requests
+-- This function is required to implement a gen_server
+-- @function [parent = #server] handle_cast
+-- @param Request
+-- @param State
+-- @return State
+
+---
+-- Handles synchronous requests
+-- This function is required to implement a gen_server
+-- Use gen_server.reply(From,Response)
+-- @function [parent = #server] handle_call
+-- @param Request
+-- @param From
+-- @param State
+-- @return State
+
+---
+-- Handles exit signals and messages sent directly using VM.send
+-- This function is required to implement a gen_server
+-- @function [parent = #server] handle_info
+-- @param Request
+-- @param State
+-- @return State
+
 local gen_server = {}
 
+---
+-- Send a synchronous request 
+-- @param #thread Co The destination of the request
+-- @param Request Can be anything
+-- @param #number Timeout optional
 function gen_server.call(Co, Request, Timeout)
   --if type(Request) ~= "table" then error("Request must be a list",2) end
   if Co == nil or Request == nil then error("Badarg",2) end
@@ -88,6 +131,7 @@ end
 
 loop = function(Module,State)
   if VM.dead[VM.running()] then error("here",2) end
+  if State == nil then error("gen_server received nil state",2) end
   local Response = {VM.receive()}
   --TODO better pattern matching on messages!?!?!?!?!
   if Response[1] == "EXIT" then
