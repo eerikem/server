@@ -74,13 +74,16 @@ function gen_server.call(Co, Request, Timeout)
         VM.demonitor(Ref)
         return unpack(Response)
       else
-        VM.log("gen_server.call got incorrect response")
+        VM.log("gen_server.call got incorrect response: "..luaunit.prettystr(Response,true))
+--        error("here",2)
       end
     end
   end
 end
 
 function gen_server.cast(Co, Request)
+  if Co == nil then error("Badarg 1",3)
+  elseif Request == nil then error("Badarg 2",3) end
   --if type(Request) ~= "table" then error("Request must be a list",2) end
   return VM.send(Co,"async",Request)
 end
@@ -122,9 +125,9 @@ local function callHandleInfo(Module, Response,State)
     return handleResults(Module,Module.handle_info(Response,State))
   else
     if VM.co2names[VM.running()] then
-      error("handle_info not defined in Module "..VM.co2names[VM.running()][1])
+      error("handle_info not defined in Module "..VM.co2names[VM.running()][1],2)
     else
-      error("handle_info not defined in Module "..tostring(VM.running()))
+      error("handle_info not defined in Module "..tostring(VM.running()),2)
     end
   end
 end
